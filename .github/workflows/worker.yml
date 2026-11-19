@@ -29,6 +29,16 @@ jobs:
         working-directory: worker
         # BUILD_ID lets an already-running poller notice the new code and restart itself
         run: npx --yes wrangler@4 deploy --var BUILD_ID:${{ github.sha }}
+      - name: Pass data-source keys to the poller
+        working-directory: worker
+        env:
+          FLYITALY_API_KEY: ${{ secrets.FLYITALY_API_KEY }}
+        run: |
+          if [ -n "$FLYITALY_API_KEY" ]; then
+            printf '%s' "$FLYITALY_API_KEY" | npx --yes wrangler@4 secret put FLYITALY_API_KEY
+          else
+            echo "No FLYITALY_API_KEY secret set; using the keyless sources only."
+          fi
       - name: Let whatsabove.nyc read the data files
         working-directory: worker
         run: npx --yes wrangler@4 r2 bucket cors set whatsabove-data --file r2-cors.json --force

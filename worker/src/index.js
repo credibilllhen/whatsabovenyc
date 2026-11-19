@@ -243,7 +243,12 @@ export class PollerV3 {
     const fill = t => t.replace('{lat}', LAT0).replace('{lon}', LON0).replace('{dist}', r);
     const main = { name: (env.ADSB_URL || 'https://api.adsb.lol').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^api\./, ''),
       url: (env.ADSB_URL || 'https://api.adsb.lol').replace(/\/+$/, '') + fill(env.ADSB_PATH || '/v2/point/{lat}/{lon}/{dist}'), key: true };
-    const list = [main];
+    const list = [];
+    // FlyItalyADSB identifies us by key rather than IP, so it works from Cloudflare's shared addresses.
+    // Its radius is in km. Free key: 30 requests/minute, 300,000/month.
+    if (env.FLYITALY_API_KEY) list.push({ name: 'flyitalyadsb', url: `https://api.flyitalyadsb.com/v2/lat/${LAT0}/lon/${LON0}/dist/${Math.round(r * 1.852)}`,
+      headers: { 'X-Api-Key': env.FLYITALY_API_KEY } });
+    list.push(main);
     if (env.FALLBACK !== 'off') list.push({ name: 'adsb.fi', url: fill(env.FALLBACK_URL || 'https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{dist}') });
     return list;
   }
@@ -256,6 +261,7 @@ export class PollerV3 {
       if (now < st.until) { errors.push(`${src.name} resting after ${st.reason}`); continue; }
       const h = { ...headers };
       if (src.key && this.env.ADSB_API_KEY) h[this.env.ADSB_KEY_HEADER || 'api-auth'] = this.env.ADSB_API_KEY;
+      if (src.headers) Object.assign(h, src.headers);
       try {
         const res = await fetch(src.url, { headers: h, signal: AbortSignal.timeout(8000) });
         if (res.ok) {
@@ -448,11 +454,14 @@ export default {
         'adsb.one': 'https://api.adsb.one/v2/point/40.7/-73.92/40',
         'airplanes.live': 'https://api.airplanes.live/v2/point/40.7/-73.92/40',
         'opensky (anonymous)': `https://opensky-network.org/api/states/all?${bb}`,
+        'flyitalyadsb (no key)': 'https://api.flyitalyadsb.com/v2/lat/40.7/lon/-73.92/dist/74',
       };
       const out = {};
       await Promise.all(Object.entries(cands).map(async ([k, u]) => {
         try {
-          const r = await fetch(u, { headers: { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+          const h = { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' };
+          if (k.startsWith('flyitalyadsb') && env.FLYITALY_API_KEY) h['X-Api-Key'] = env.FLYITALY_API_KEY;
+          const r = await fetch(u, { headers: h, signal: AbortSignal.timeout(12000) });
           const t = await r.text(); let n = null;
           try { const j = JSON.parse(t); n = (j.ac || j.aircraft || j.states || []).length; } catch (e) {}
           out[k] = { status: r.status, aircraft: n, note: n == null ? t.slice(0, 100) : undefined, limit: r.headers.get('x-rate-limit-remaining') || undefined };
