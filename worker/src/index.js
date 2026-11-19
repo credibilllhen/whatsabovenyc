@@ -415,6 +415,9 @@ export class PollerV2 {
   }
 }
 
+// Kept only until the old class is retired (wrangler.toml migration v3).
+export class Poller extends PollerV2 { async alarm() { /* retired: stop the old alarm chain */ } }
+
 /* ---------- the Worker ---------- */
 const poller = env => env.POLLER.get(env.POLLER.idFromName('nyc'));
 
