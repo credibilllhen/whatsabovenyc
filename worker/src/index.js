@@ -247,7 +247,7 @@ export class PollerV2 {
     const errors = [];
     for (const src of this.sources()) {
       const st = this.rest[src.name] || (this.rest[src.name] = { until: 0, strikes: 0 });
-      if (now < st.until) { errors.push(`${src.name} resting`); continue; }
+      if (now < st.until) { errors.push(`${src.name} resting after ${st.reason}`); continue; }
       const h = { ...headers };
       if (src.key && this.env.ADSB_API_KEY) h[this.env.ADSB_KEY_HEADER || 'api-auth'] = this.env.ADSB_API_KEY;
       try {
@@ -262,10 +262,12 @@ export class PollerV2 {
         const ra = Number(res.headers.get('Retry-After')) || 0;
         st.strikes++;
         st.until = now + Math.max(ra * 1000, Math.min(600e3, 30e3 * 2 ** (st.strikes - 1)));
+        st.reason = `HTTP ${res.status}${ra ? `, retry after ${ra} s` : ''}`; st.at = new Date(now).toISOString();
         errors.push(`${src.name} HTTP ${res.status}`);
       } catch (e) {
         st.strikes++; st.until = now + Math.min(600e3, 30e3 * 2 ** (st.strikes - 1));
-        errors.push(`${src.name} ${e.name === 'TimeoutError' ? 'timed out' : e.message}`);
+        st.reason = e.name === 'TimeoutError' ? 'timed out' : String(e.message || e); st.at = new Date(now).toISOString();
+        errors.push(`${src.name} ${st.reason}`);
       }
     }
     throw new Error(errors.join('; '));
