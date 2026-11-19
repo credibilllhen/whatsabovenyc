@@ -34,6 +34,11 @@ deleted_classes = ["Poller"]
 binding = "DATA"
 bucket_name = "whatsabove-data"
 
+# v4 retires the second class.
+[[migrations]]
+tag = "v4"
+deleted_classes = ["PollerV2"]
+
 [vars]
 ADSB_URL = "https://api.adsb.lol"
 ADSB_PATH = "/v2/point/{lat}/{lon}/{dist}"
