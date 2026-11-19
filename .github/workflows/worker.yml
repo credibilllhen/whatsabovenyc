@@ -33,7 +33,13 @@ jobs:
         working-directory: worker
         env:
           FLYITALY_API_KEY: ${{ secrets.FLYITALY_API_KEY }}
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
         run: |
+          if [ -n "$INGEST_TOKEN" ]; then
+            printf '%s' "$INGEST_TOKEN" | npx --yes wrangler@4 secret put INGEST_TOKEN
+          else
+            echo "No INGEST_TOKEN secret set; the home relay can't send data yet."
+          fi
           if [ -n "$FLYITALY_API_KEY" ]; then
             printf '%s' "$FLYITALY_API_KEY" | npx --yes wrangler@4 secret put FLYITALY_API_KEY
           else

@@ -166,6 +166,21 @@ export class PollerV3 {
     }
     await this.load();
     if (path === '/kick') { await this.ensureAlarm(); return new Response('ok'); }
+    if (path === '/ingest') { // a feed from the home relay, already checked by the Worker
+      const now = Date.now();
+      if (now - (this.relayAt || 0) < 3000) return new Response('too soon', { status: 429 });
+      try {
+        this.relayAt = now; this.source = req.headers.get('X-Source') || 'home relay';
+        this.stats.bySource = this.stats.bySource || {};
+        this.stats.bySource[this.source] = (this.stats.bySource[this.source] || 0) + 1;
+        await this.process(await req.json(), now);
+        this.stats.lastOk = now; this.stats.relayAt = now;
+        return new Response(null, { status: 204 });
+      } catch (e) {
+        this.stats.errors++; this.stats.lastError = `${new Date().toISOString()} relay: ${e.message || e}`;
+        return new Response('bad feed', { status: 400 });
+      }
+    }
     await this.ensureAlarm();
     return Response.json({ ...this.stats, build: this.env.BUILD_ID || 'dev', source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
       tracked: this.ac.size, routes: this.routes.size, interval: this.interval });
@@ -186,8 +201,16 @@ export class PollerV3 {
   }
 
   async poll() {
-    const env = this.env, now = Date.now(), tSec = now / 1000;
-    const recs = parseFeed(await this.fetchFeed(now));
+    const now = Date.now();
+    // A home relay (relay/relay.py) is feeding us: don't call the APIs ourselves.
+    if (now - (this.relayAt || 0) < Math.max(25e3, this.interval * 2500)) return;
+    await this.process(await this.fetchFeed(now), now);
+  }
+
+  // The whole sky from one ADS-B v2 response: update aircraft, approaches, routes, and the files.
+  async process(feed, now) {
+    const env = this.env, tSec = now / 1000;
+    const recs = parseFeed(feed);
     const corr = qnhCorrection(recs), seen = new Set();
 
     for (const r of recs) {
@@ -439,52 +462,21 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+    if (url.pathname === '/ingest' && req.method === 'POST') { // the home relay
+      const want = env.INGEST_TOKEN, got = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+      if (!want || got.length !== want.length) return new Response('unauthorized', { status: 401 });
+      let diff = 0; for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+      if (diff) return new Response('unauthorized', { status: 401 });
+      let body = req.body;
+      if (req.headers.get('X-Gzip') === '1') body = body.pipeThrough(new DecompressionStream('gzip'));
+      return poller(env).fetch('https://poller/ingest', { method: 'POST', body, headers: { 'X-Source': (req.headers.get('X-Source') || 'home relay').slice(0, 40) } });
+    }
     if (url.pathname === '/live.json' || url.pathname === '/history.json') {
       const obj = await env.DATA.get(url.pathname.slice(1));
       if (!obj) return new Response('not ready yet', { status: 404, headers: cors });
       return new Response(obj.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': obj.httpMetadata?.cacheControl || 'no-store' } });
     }
     if (url.pathname === '/status') return poller(env).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
-    if (url.pathname === '/probe/lol') { // adsb.lol hit rate from here: 8 tries, 1.2 s apart
-      const res = [];
-      for (let i = 0; i < 8; i++) {
-        try { const r = await fetch('https://api.adsb.lol/v2/point/40.7/-73.92/40', { headers: { 'User-Agent': 'whatsabove.nyc poller' } }); res.push(r.status); await r.arrayBuffer(); }
-        catch (e) { res.push('err'); }
-        await new Promise(r => setTimeout(r, 1200));
-      }
-      return Response.json({ statuses: res });
-    }
-    if (url.pathname === '/probe/flyitaly') { // what the block page says
-      const r = await fetch('https://api.flyitalyadsb.com/v2/lat/40.7/lon/-73.92/dist/74', { headers: { 'User-Agent': 'whatsabove.nyc poller' } });
-      const t = await r.text();
-      const title = (t.match(/<title>([^<]*)<\/title>/i) || [])[1] || '';
-      const code = (t.match(/Error\s*(?:code)?\s*(\d{3,4})/i) || [])[1] || '';
-      return Response.json({ status: r.status, title, code, server: r.headers.get('server'), cfRay: r.headers.get('cf-ray'), text: t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400) });
-    }
-    if (url.pathname === '/probe') { // which keyless sources answer from Cloudflare right now
-      const bb = 'lamin=40.1&lomin=-74.7&lamax=41.3&lomax=-73.1';
-      const cands = {
-        'adsb.lol': 'https://api.adsb.lol/v2/point/40.7/-73.92/40',
-        'adsb.fi v2': 'https://opendata.adsb.fi/api/v2/lat/40.7/lon/-73.92/dist/40',
-        'adsb.fi v3': 'https://opendata.adsb.fi/api/v3/lat/40.7/lon/-73.92/dist/40',
-        'adsb.one': 'https://api.adsb.one/v2/point/40.7/-73.92/40',
-        'airplanes.live': 'https://api.airplanes.live/v2/point/40.7/-73.92/40',
-        'opensky (anonymous)': `https://opensky-network.org/api/states/all?${bb}`,
-        'flyitalyadsb (no key)': 'https://api.flyitalyadsb.com/v2/lat/40.7/lon/-73.92/dist/74',
-      };
-      const out = {};
-      await Promise.all(Object.entries(cands).map(async ([k, u]) => {
-        try {
-          const h = { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' };
-          if (k.startsWith('flyitalyadsb') && env.FLYITALY_API_KEY) h['X-Api-Key'] = env.FLYITALY_API_KEY;
-          const r = await fetch(u, { headers: h, signal: AbortSignal.timeout(12000) });
-          const t = await r.text(); let n = null;
-          try { const j = JSON.parse(t); n = (j.ac || j.aircraft || j.states || []).length; } catch (e) {}
-          out[k] = { status: r.status, aircraft: n, note: n == null ? t.slice(0, 100) : undefined, limit: r.headers.get('x-rate-limit-remaining') || undefined };
-        } catch (e) { out[k] = { error: String(e.message || e) }; }
-      }));
-      return Response.json(out);
-    }
     return new Response('whatsabove.nyc poller. See /status.', { headers: cors });
   },
   async scheduled(event, env, ctx) {
