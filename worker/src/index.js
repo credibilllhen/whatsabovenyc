@@ -140,7 +140,9 @@ export class Poller {
       for (const [hex, pts] of Object.entries(h.ac || {})) {
         const trail = pts.map(([dt, la, lo, alt]) => [base + dt, la / 1e4, lo / 1e4, alt]);
         const last = trail[trail.length - 1];
-        this.ac.set(hex, { r: null, trail, hist: [], lastSeen: last[0] * 1000, lastTrail: last[0] * 1000, gone: true });
+        const m = (h.meta || {})[hex];
+        const r = m ? { hex, cs: m[0] || '', type: m[1] || '', reg: m[2] || '', lat: last[1], lon: last[2], altFt: last[3], gs: 0, track: 0, vr: 0, sq: '', ground: false, seen: 0 } : null;
+        this.ac.set(hex, { r, trail, hist: [], lastSeen: last[0] * 1000, lastTrail: last[0] * 1000, gone: true });
       }
       for (const [cs, r] of Object.entries(h.routes || {})) this.routes.set(cs, r);
       const L = h.learn || {};
@@ -270,15 +272,16 @@ export class Poller {
   }
 
   writeHistory(now) {
-    const base = now / 1000, ac = {};
+    const base = now / 1000, ac = {}, meta = {};
     for (const [hex, e] of this.ac) {
       if (!e.trail.length) continue;
       ac[hex] = e.trail.map(([t, la, lo, alt]) => [Math.round(t - base), Math.round(la * 1e4), Math.round(lo * 1e4), alt]);
+      if (e.r) meta[hex] = [e.r.cs, e.r.type, e.r.reg]; // for labels when the page plays history back
     }
     const routes = {};
     for (const e of this.ac.values()) { const cs = e.r && e.r.cs, rt = cs && this.routes.get(cs); if (rt) routes[cs] = rt; }
     const learn = { scores: this.scores, landVotes: this.landVotes, rwyActive: this.rwyActive, lastScoreT: this.lastScoreT, tracks: this.tracks };
-    const body = JSON.stringify({ t: now, minutes: HISTORY_MIN, ac, routes, learn });
+    const body = JSON.stringify({ t: now, minutes: HISTORY_MIN, every: TRAIL_EVERY_S, ac, meta, routes, learn });
     return this.env.DATA.put('history.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=20' } });
   }
 
