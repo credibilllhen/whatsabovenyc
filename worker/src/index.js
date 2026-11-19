@@ -445,6 +445,22 @@ export default {
       return new Response(obj.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': obj.httpMetadata?.cacheControl || 'no-store' } });
     }
     if (url.pathname === '/status') return poller(env).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
+    if (url.pathname === '/probe/lol') { // adsb.lol hit rate from here: 8 tries, 1.2 s apart
+      const res = [];
+      for (let i = 0; i < 8; i++) {
+        try { const r = await fetch('https://api.adsb.lol/v2/point/40.7/-73.92/40', { headers: { 'User-Agent': 'whatsabove.nyc poller' } }); res.push(r.status); await r.arrayBuffer(); }
+        catch (e) { res.push('err'); }
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      return Response.json({ statuses: res });
+    }
+    if (url.pathname === '/probe/flyitaly') { // what the block page says
+      const r = await fetch('https://api.flyitalyadsb.com/v2/lat/40.7/lon/-73.92/dist/74', { headers: { 'User-Agent': 'whatsabove.nyc poller' } });
+      const t = await r.text();
+      const title = (t.match(/<title>([^<]*)<\/title>/i) || [])[1] || '';
+      const code = (t.match(/Error\s*(?:code)?\s*(\d{3,4})/i) || [])[1] || '';
+      return Response.json({ status: r.status, title, code, server: r.headers.get('server'), cfRay: r.headers.get('cf-ray'), text: t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400) });
+    }
     if (url.pathname === '/probe') { // which keyless sources answer from Cloudflare right now
       const bb = 'lamin=40.1&lomin=-74.7&lamax=41.3&lomax=-73.1';
       const cands = {
