@@ -11,7 +11,7 @@ crons = ["* * * * *"]
 
 [[durable_objects.bindings]]
 name = "POLLER"
-class_name = "PollerV2"
+class_name = "PollerV3"
 
 # The free plan needs SQLite-backed Durable Objects.
 [[migrations]]
@@ -19,10 +19,16 @@ tag = "v1"
 new_sqlite_classes = ["Poller"]
 
 # v2 moves the poller to a new class, so it starts fresh on the current code;
-# it restores its state from history.json. The old class is retired in v3.
+# it restores its state from history.json. 
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["PollerV2"]
+
+# v3: the current poller class, which restarts itself when a newer build is deployed.
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["PollerV3"]
+deleted_classes = ["Poller"]
 
 [[r2_buckets]]
 binding = "DATA"

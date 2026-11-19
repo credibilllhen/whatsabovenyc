@@ -113,7 +113,7 @@ function parseRoute(j) {
 }
 
 /* ---------- the poller ---------- */
-export class PollerV2 {
+export class PollerV3 {
   constructor(state, env) {
     this.state = state; this.env = env;
     this.loaded = false;
@@ -157,11 +157,17 @@ export class PollerV2 {
   }
 
   async fetch(req) {
+    const url = new URL(req.url), path = url.pathname;
+    // A running instance keeps its code across deploys. Each minute the Worker (always on the
+    // latest code) passes its build; an older instance resets itself and comes back on the new one.
+    const build = url.searchParams.get('build');
+    if (build && this.env.BUILD_ID && build !== this.env.BUILD_ID && this.state.abort) {
+      this.state.abort(`restarting for build ${build}`);
+    }
     await this.load();
-    const path = new URL(req.url).pathname;
     if (path === '/kick') { await this.ensureAlarm(); return new Response('ok'); }
     await this.ensureAlarm();
-    return Response.json({ ...this.stats, source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
+    return Response.json({ ...this.stats, build: this.env.BUILD_ID || 'dev', source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
       tracked: this.ac.size, routes: this.routes.size, interval: this.interval });
   }
 
@@ -417,8 +423,8 @@ export class PollerV2 {
   }
 }
 
-// Kept only until the old class is retired (wrangler.toml migration v3).
-export class Poller extends PollerV2 { async alarm() { /* retired: stop the old alarm chain */ } }
+// Kept only until this class is retired (wrangler.toml migration v4).
+export class PollerV2 extends PollerV3 { async alarm() { /* retired */ } }
 
 /* ---------- the Worker ---------- */
 const poller = env => env.POLLER.get(env.POLLER.idFromName('nyc'));
@@ -435,10 +441,10 @@ export default {
       if (!obj) return new Response('not ready yet', { status: 404, headers: cors });
       return new Response(obj.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': obj.httpMetadata?.cacheControl || 'no-store' } });
     }
-    if (url.pathname === '/status') return poller(env).fetch('https://poller/status');
+    if (url.pathname === '/status') return poller(env).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
     return new Response('whatsabove.nyc poller. See /status.', { headers: cors });
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(poller(env).fetch('https://poller/kick'));
+    ctx.waitUntil(poller(env).fetch(`https://poller/kick?build=${env.BUILD_ID || ''}`));
   },
 };

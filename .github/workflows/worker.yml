@@ -27,7 +27,8 @@ jobs:
           node-version: 22
       - name: Deploy
         working-directory: worker
-        run: npx --yes wrangler@4 deploy
+        # BUILD_ID lets an already-running poller notice the new code and restart itself
+        run: npx --yes wrangler@4 deploy --var BUILD_ID:${{ github.sha }}
       - name: Let whatsabove.nyc read the data files
         working-directory: worker
         run: npx --yes wrangler@4 r2 bucket cors set whatsabove-data --file r2-cors.json --force
