@@ -159,7 +159,7 @@ export class Poller {
     const path = new URL(req.url).pathname;
     if (path === '/kick') { await this.ensureAlarm(); return new Response('ok'); }
     await this.ensureAlarm();
-    return Response.json({ ...this.stats, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
+    return Response.json({ ...this.stats, source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
       tracked: this.ac.size, routes: this.routes.size, interval: this.interval });
   }
 
@@ -179,14 +179,7 @@ export class Poller {
 
   async poll() {
     const env = this.env, now = Date.now(), tSec = now / 1000;
-    const base = (env.ADSB_URL || 'https://api.adsb.lol').replace(/\/+$/, '');
-    const path = (env.ADSB_PATH || '/v2/point/{lat}/{lon}/{dist}')
-      .replace('{lat}', LAT0).replace('{lon}', LON0).replace('{dist}', env.RADIUS_NM || 40);
-    const headers = { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' };
-    if (env.ADSB_API_KEY) headers[env.ADSB_KEY_HEADER || 'api-auth'] = env.ADSB_API_KEY;
-    const res = await fetch(base + path, { headers });
-    if (!res.ok) throw new Error(`ADS-B API answered HTTP ${res.status}`);
-    const recs = parseFeed(await res.json());
+    const recs = parseFeed(await this.fetchFeed(now));
     const corr = qnhCorrection(recs), seen = new Set();
 
     for (const r of recs) {
@@ -228,10 +221,52 @@ export class Poller {
       live.push(o);
     }
     this.stats.lastCount = live.length;
-    const body = JSON.stringify({ t: now, interval: this.interval, radius: Number(env.RADIUS_NM || 40), source: 'adsb.lol', ac: live, active: this.activeList(now) });
+    const body = JSON.stringify({ t: now, interval: this.interval, radius: Number(env.RADIUS_NM || 40), source: this.source || 'adsb.lol', ac: live, active: this.activeList(now) });
     const puts = [env.DATA.put('live.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: `public, max-age=${Math.max(1, Math.floor(this.interval / 2))}` } })];
     if (now - this.lastHistory >= 60e3) { puts.push(this.writeHistory(now)); this.lastHistory = now; }
     await Promise.all(puts);
+  }
+
+  /* Every aircraft in the area, in one call. Sources are tried in order; one that refuses
+     (rate limit, error, timeout) is rested for a while, longer each time, and the next is used.
+     Cloudflare's outbound addresses are shared, so volunteer APIs sometimes rate-limit them. */
+  sources() {
+    const env = this.env, r = env.RADIUS_NM || 40;
+    const fill = t => t.replace('{lat}', LAT0).replace('{lon}', LON0).replace('{dist}', r);
+    const main = { name: (env.ADSB_URL || 'https://api.adsb.lol').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^api\./, ''),
+      url: (env.ADSB_URL || 'https://api.adsb.lol').replace(/\/+$/, '') + fill(env.ADSB_PATH || '/v2/point/{lat}/{lon}/{dist}'), key: true };
+    const list = [main];
+    if (env.FALLBACK !== 'off') list.push({ name: 'adsb.fi', url: fill(env.FALLBACK_URL || 'https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{dist}') });
+    return list;
+  }
+  async fetchFeed(now) {
+    this.rest = this.rest || {};
+    const headers = { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' };
+    const errors = [];
+    for (const src of this.sources()) {
+      const st = this.rest[src.name] || (this.rest[src.name] = { until: 0, strikes: 0 });
+      if (now < st.until) { errors.push(`${src.name} resting`); continue; }
+      const h = { ...headers };
+      if (src.key && this.env.ADSB_API_KEY) h[this.env.ADSB_KEY_HEADER || 'api-auth'] = this.env.ADSB_API_KEY;
+      try {
+        const res = await fetch(src.url, { headers: h, signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const j = await res.json();
+          st.strikes = 0; this.source = src.name;
+          this.stats.bySource = this.stats.bySource || {};
+          this.stats.bySource[src.name] = (this.stats.bySource[src.name] || 0) + 1;
+          return j;
+        }
+        const ra = Number(res.headers.get('Retry-After')) || 0;
+        st.strikes++;
+        st.until = now + Math.max(ra * 1000, Math.min(600e3, 30e3 * 2 ** (st.strikes - 1)));
+        errors.push(`${src.name} HTTP ${res.status}`);
+      } catch (e) {
+        st.strikes++; st.until = now + Math.min(600e3, 30e3 * 2 ** (st.strikes - 1));
+        errors.push(`${src.name} ${e.name === 'TimeoutError' ? 'timed out' : e.message}`);
+      }
+    }
+    throw new Error(errors.join('; '));
   }
 
   writeHistory(now) {
