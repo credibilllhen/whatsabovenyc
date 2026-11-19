@@ -439,6 +439,27 @@ export default {
       return new Response(obj.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': obj.httpMetadata?.cacheControl || 'no-store' } });
     }
     if (url.pathname === '/status') return poller(env).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
+    if (url.pathname === '/probe') { // which keyless sources answer from Cloudflare right now
+      const bb = 'lamin=40.1&lomin=-74.7&lamax=41.3&lomax=-73.1';
+      const cands = {
+        'adsb.lol': 'https://api.adsb.lol/v2/point/40.7/-73.92/40',
+        'adsb.fi v2': 'https://opendata.adsb.fi/api/v2/lat/40.7/lon/-73.92/dist/40',
+        'adsb.fi v3': 'https://opendata.adsb.fi/api/v3/lat/40.7/lon/-73.92/dist/40',
+        'adsb.one': 'https://api.adsb.one/v2/point/40.7/-73.92/40',
+        'airplanes.live': 'https://api.airplanes.live/v2/point/40.7/-73.92/40',
+        'opensky (anonymous)': `https://opensky-network.org/api/states/all?${bb}`,
+      };
+      const out = {};
+      await Promise.all(Object.entries(cands).map(async ([k, u]) => {
+        try {
+          const r = await fetch(u, { headers: { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+          const t = await r.text(); let n = null;
+          try { const j = JSON.parse(t); n = (j.ac || j.aircraft || j.states || []).length; } catch (e) {}
+          out[k] = { status: r.status, aircraft: n, note: n == null ? t.slice(0, 100) : undefined, limit: r.headers.get('x-rate-limit-remaining') || undefined };
+        } catch (e) { out[k] = { error: String(e.message || e) }; }
+      }));
+      return Response.json(out);
+    }
     return new Response('whatsabove.nyc poller. See /status.', { headers: cors });
   },
   async scheduled(event, env, ctx) {
