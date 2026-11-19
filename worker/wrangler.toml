@@ -2,9 +2,8 @@ name = "whatsabove-poller"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
-# The poller runs on its own timer and writes to R2; it needs no public address.
-# (Set this to true, after registering a workers.dev subdomain, to reach /status.)
-workers_dev = false
+# Publishes /status (and fallback copies of live.json and history.json) on workers.dev.
+workers_dev = true
 
 # Pokes the poller every minute, so it starts on the first deploy and restarts if it ever stops.
 [triggers]
