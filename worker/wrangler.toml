@@ -1,0 +1,31 @@
+name = "whatsabove-poller"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Pokes the poller every minute, so it starts on the first deploy and restarts if it ever stops.
+[triggers]
+crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "POLLER"
+class_name = "Poller"
+
+# The free plan needs SQLite-backed Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Poller"]
+
+[[r2_buckets]]
+binding = "DATA"
+bucket_name = "whatsabove-data"
+
+[vars]
+ADSB_URL = "https://api.adsb.lol"
+ADSB_PATH = "/v2/point/{lat}/{lon}/{dist}"
+RADIUS_NM = "40"
+# 10 s fits the free plan. On the $5 Workers plan, 5 is fine.
+POLL_SECONDS = "10"
+ALLOWED_ORIGIN = "https://whatsabove.nyc"
+
+[observability]
+enabled = true

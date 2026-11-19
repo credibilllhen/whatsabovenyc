@@ -1,0 +1,1517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>What’s above NYC</title>
+<meta name="description" content="Live 3D view of the planes over New York, with the approaches in use at JFK, LaGuardia and Newark.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{
+  --water:#cddde7; --land:#e7ebd7; --shore:#93abba; --ink:#16232d; --muted:#546470;
+  --runway:#2b3640; --ring:#2f5d9a; --apt:#962c6e;
+  --arr:#1c66cc; --dep:#c9481b; --thru:#4f5a66; --gnd:#88929b; --glide:#11846a;
+  --panel:rgba(246,248,244,.94); --line:#bfcbd3; --halo:rgba(214,227,235,.95); --focus:#1c66cc;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --glide:#49d3a6;
+    --water:#0a1720; --land:#172932; --shore:#2c4553; --ink:#d9e4ea; --muted:#8a9eab;
+    --runway:#c7d3da; --ring:#5c8fd8; --apt:#de78bd;
+    --arr:#5ca9ff; --dep:#ff8b55; --thru:#a7b2bb; --gnd:#66747e;
+    --panel:rgba(13,24,31,.92); --line:#2a3f4b; --halo:rgba(10,23,32,.95); --focus:#5ca9ff;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --glide:#49d3a6;
+  --water:#0a1720; --land:#172932; --shore:#2c4553; --ink:#d9e4ea; --muted:#8a9eab;
+  --runway:#c7d3da; --ring:#5c8fd8; --apt:#de78bd;
+  --arr:#5ca9ff; --dep:#ff8b55; --thru:#a7b2bb; --gnd:#66747e;
+  --panel:rgba(13,24,31,.92); --line:#2a3f4b; --halo:rgba(10,23,32,.95); --focus:#5ca9ff;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--water);color:var(--ink);font:400 14px/1.4 'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+*,*::before,*::after{box-sizing:border-box}
+#stage{position:fixed;inset:0}
+#stage canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+#tags{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+
+/* ATC-style data blocks with a leader line */
+.tag{position:absolute;left:0;top:0;will-change:transform;color:var(--thru)}
+.tag::before{content:"";position:absolute;left:3px;top:-3px;width:13px;height:1.25px;background:currentColor;transform-origin:0 50%;transform:rotate(-45deg);opacity:.8}
+.tag .blk{position:absolute;left:13px;bottom:9px;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:12.5px;line-height:1.1;white-space:nowrap;color:var(--ink);
+  text-shadow:0 0 2px var(--halo),0 0 3px var(--halo),0 0 6px var(--halo)}
+.tag .blk b{font-weight:700;font-size:14px;letter-spacing:.01em}
+.tag .d{color:var(--muted)}
+.tag.arr{color:var(--arr)} .tag.dep{color:var(--dep)} .tag.gnd{color:var(--gnd)}
+.tag.arr b{color:var(--arr)} .tag.dep b{color:var(--dep)}
+.tag.sel .blk{background:var(--panel);padding:4px 7px 5px;border:1.25px solid currentColor;border-radius:4px;text-shadow:none}
+.tag.sel b{font-size:15px}
+.apt{position:absolute;left:0;top:0;font:700 13px/1 'Barlow Condensed','Arial Narrow',sans-serif;color:var(--apt);white-space:nowrap;
+  text-shadow:0 0 2px var(--halo),0 0 5px var(--halo)}
+.apt span{display:block;font-weight:500;font-size:11px;color:var(--muted);margin-top:1px;text-align:center}
+.glbl{position:absolute;left:0;top:0;font:500 11px/1.1 'Barlow Condensed','Arial Narrow',sans-serif;color:var(--glide);white-space:nowrap;text-align:center;
+  text-shadow:0 0 2px var(--halo),0 0 4px var(--halo),0 0 7px var(--halo)}
+.glbl b{display:block;font-weight:700;font-size:14px}
+.ringlbl{position:absolute;left:0;top:0;font:500 11px/1 'Barlow Condensed','Arial Narrow',sans-serif;color:var(--ring);opacity:.8}
+
+#hud{position:fixed;top:0;left:0;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 0;pointer-events:none;max-width:60vw}
+#hud h1{margin:0;font:700 24px/1 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.005em}
+#status{margin:4px 0 0;font-size:13px;color:var(--muted)}
+#status .live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
+#status .live.on{background:#2fa36b}
+#status .live.bad{background:var(--dep)}
+#rwys{margin:4px 0 0;font:500 14px/1.25 'Barlow Condensed','Arial Narrow',sans-serif;color:var(--glide)}
+#rwys b{display:inline-block;min-width:30px;font-weight:700}
+#rwys .fl{font-size:12px;color:var(--muted)}
+
+#tools{position:fixed;top:0;right:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 0;display:flex;gap:6px}
+.tb{font:500 13px/1 'Barlow',system-ui,sans-serif;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 11px;min-height:34px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.tb:hover{border-color:var(--muted)}
+.tb.primary{background:var(--ink);color:var(--water);border-color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+#legend{position:fixed;left:0;bottom:0;padding:0 16px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;gap:6px 16px;flex-wrap:wrap;font-size:13px;pointer-events:none;max-width:70vw}
+#legend span{white-space:nowrap}
+.sw{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+#detail{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);width:310px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.dhead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+#dFlight{font:700 30px/1 'Barlow Condensed','Arial Narrow',sans-serif}
+#dAirline{color:var(--muted);font-size:13px;margin-top:3px}
+.x{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;padding:6px;cursor:pointer;border-radius:4px}
+.route{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin:14px 0 12px}
+.route .code{display:block;font:700 22px/1 'Barlow Condensed','Arial Narrow',sans-serif}
+.route .city{display:block;font-size:12px;color:var(--muted);margin-top:2px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.route .right{text-align:right}
+.route .arrow{height:1.5px;background:var(--line);position:relative}
+.route .arrow::after{content:"";position:absolute;right:-1px;top:-4px;border:4.5px solid transparent;border-left:7px solid var(--line);border-right:0}
+#dGrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 12px;margin:0 0 14px}
+#dGrid div{min-width:0}
+#dGrid dt{font-size:11.5px;color:var(--muted)}
+#dGrid dd{margin:1px 0 0;font:600 15px/1.15 'Barlow Condensed','Arial Narrow',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wide{width:100%}
+
+#settings{position:fixed;top:0;right:0;height:100%;width:350px;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px calc(env(safe-area-inset-bottom,0px) + 24px);background:var(--panel);border-left:1px solid var(--line);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#settings h2{margin:0;font:700 22px/1 'Barlow Condensed','Arial Narrow',sans-serif}
+#settings fieldset{border:0;padding:0;margin:18px 0 0}
+#settings legend{font-weight:600;font-size:14px;padding:0;margin-bottom:6px}
+#settings label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+#settings input[type=text],#settings input[type=number],#settings select{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 9px}
+#settings input:disabled{opacity:.6}
+#settings input[type=range]{width:100%;accent-color:var(--ink)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg label{margin:0!important;color:var(--ink)!important;background:var(--panel);text-align:center;padding:8px 4px;cursor:pointer;font-size:13px!important}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--ink);color:var(--water)!important}
+.seg label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
+#settings label.check{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;margin:4px 0 10px;cursor:pointer}
+#settings label.check input{width:17px;height:17px;accent-color:var(--glide);margin:0}
+.note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.note code{font-size:12px}
+.row{display:flex;justify-content:space-between;align-items:baseline}
+.row output{font:600 14px 'Barlow Condensed','Arial Narrow',sans-serif;color:var(--ink)}
+.actions{display:flex;gap:8px;margin-top:22px}
+.actions .tb{flex:1}
+
+#banner{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);width:min(520px,calc(100vw - 24px));background:var(--panel);border:1px solid var(--dep);border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:center}
+#banner p{margin:0;font-size:13.5px;flex:1}
+[hidden]{display:none!important}
+
+@media (max-width:640px){
+  #hud h1{font-size:20px}
+  #hud{max-width:100%;padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
+  #detail{left:0;right:0;bottom:0;width:auto;border-radius:12px 12px 0 0;border-width:1px 0 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
+  body.has-detail #legend{display:none}
+  #settings{width:100%;border-left:0}
+  .tb{padding:9px 9px}
+}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="tags" aria-hidden="true"></div>
+
+<header id="hud">
+  <h1>What&rsquo;s above NYC</h1>
+  <p id="status"><span class="live"></span>Starting…</p>
+  <p id="rwys" hidden></p>
+</header>
+
+<nav id="tools" aria-label="View controls">
+  <button class="tb" id="bTags" type="button">Tags: full</button>
+  <button class="tb" id="bHome" type="button">Recenter</button>
+  <button class="tb" id="bSettings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
+</nav>
+
+<div id="legend" aria-label="Legend">
+  <span><i class="sw" style="background:var(--arr)"></i>Arriving</span>
+  <span><i class="sw" style="background:var(--dep)"></i>Departing</span>
+  <span><i class="sw" style="background:var(--thru)"></i>Passing through</span>
+  <span><i class="sw" style="background:var(--glide)"></i>Active approach</span>
+</div>
+
+<div id="banner" role="alert" hidden>
+  <p id="bannerText"></p>
+  <button class="tb" id="bannerDemo" type="button">Switch to demo</button>
+</div>
+
+<section id="detail" aria-live="polite" hidden>
+  <div class="dhead">
+    <div><div id="dFlight"></div><div id="dAirline"></div></div>
+    <button class="x" id="dClose" type="button" aria-label="Close flight details">✕</button>
+  </div>
+  <div class="route">
+    <div><span class="code" id="dOrig"></span><span class="city" id="dOrigN"></span></div>
+    <div class="arrow" aria-hidden="true"></div>
+    <div class="right"><span class="code" id="dDest"></span><span class="city" id="dDestN"></span></div>
+  </div>
+  <dl id="dGrid"></dl>
+  <button class="tb wide" id="dFollow" type="button">Follow this flight</button>
+</section>
+
+<section id="settings" aria-label="Settings" hidden>
+  <div class="row"><h2>Settings</h2><button class="x" id="sClose" type="button" aria-label="Close settings">✕</button></div>
+  <form id="sForm">
+    <fieldset>
+      <legend>Traffic source</legend>
+      <div class="seg" role="radiogroup">
+        <label data-cloud><input type="radio" name="source" value="cloud">Live</label>
+        <label><input type="radio" name="source" value="demo">Demo</label>
+        <label data-local><input type="radio" name="source" value="freeflight">FreeFlight</label>
+        <label data-local><input type="radio" name="source" value="adsb">ADS-B v2</label>
+      </div>
+      <p class="note" id="sProxy"></p>
+      <div id="sLocal">
+      <label for="sFF">FreeFlight server</label>
+      <input type="text" id="sFF" spellcheck="false" autocomplete="off" placeholder="http://localhost:8000">
+      <label for="sAdsb">ADS-B v2 server</label>
+      <input type="text" id="sAdsb" spellcheck="false" autocomplete="off" placeholder="https://api.adsb.lol">
+      <label for="sAdsbPath">ADS-B v2 area query</label>
+      <input type="text" id="sAdsbPath" spellcheck="false" autocomplete="off" placeholder="/v2/point/{lat}/{lon}/{dist}">
+      <div class="row"><label for="sRadius">Coverage radius</label><output id="oRadius"></output></div>
+      <input type="range" id="sRadius" min="10" max="120" step="5">
+      <div class="row"><label for="sRefresh">Refresh every</label><output id="oRefresh"></output></div>
+      <input type="range" id="sRefresh" min="2" max="30" step="1">
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>View</legend>
+      <label class="check"><input type="checkbox" id="sLow">Hide aircraft on the ground or below 50 ft</label>
+      <label class="check"><input type="checkbox" id="sGlide">Show active approaches and glide paths</label>
+      <div class="row"><label for="sExag">Altitude exaggeration</label><output id="oExag"></output></div>
+      <input type="range" id="sExag" min="1" max="8" step="0.5">
+      <div class="row"><label for="sTrail">Trail length</label><output id="oTrail"></output></div>
+      <input type="range" id="sTrail" min="1" max="10" step="1">
+      <div class="row"><label for="sCeil">Hide aircraft above</label><output id="oCeil"></output></div>
+      <input type="range" id="sCeil" min="2000" max="45000" step="1000">
+      <label for="sDemo">Demo playback speed</label>
+      <select id="sDemo"><option value="1">Real time</option><option value="3">3× faster</option><option value="8">8× faster</option></select>
+    </fieldset>
+    <div class="actions">
+      <button class="tb primary" type="submit">Save and reconnect</button>
+    </div>
+    <p class="note">Live positions come from volunteer ADS-B networks: adsb.lol through the ADS-B v2 option, or adsb.lol, airplanes.live, adsb.fi and OpenSky via FreeFlight. Non-commercial use only. Approaches come from the FAA's coded procedures (cycle 2611, valid to Nov 26, 2026). Coastline © OpenStreetMap contributors. Routes come from adsbdb and can be wrong for flights that reuse a callsign. Runways and shorelines are drawn approximately.</p>
+  </form>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="approaches.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ---------- basics ---------- */
+const D2R = Math.PI / 180, R2D = 180 / Math.PI, FT_PER_NM = 6076.12;
+const LAT0 = 40.70, LON0 = -73.92, COSL = Math.cos(LAT0 * D2R);
+const toXZ = (lat, lon) => ({ x: (lon - LON0) * 60 * COSL, z: -(lat - LAT0) * 60 });
+const toLL = (x, z) => ({ lat: LAT0 - z / 60, lon: LON0 + x / (60 * COSL) });
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T0 = performance.now();
+const secs = now => (now - T0) / 1000;
+const $ = id => document.getElementById(id);
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('nyair:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('nyair:' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
+};
+const savedCfg = store.get('cfg', null);
+const cfg = Object.assign({
+  v: 3, source: 'demo', ffUrl: 'http://localhost:8000', adsbUrl: 'https://api.adsb.lol',
+  adsbPath: '/v2/point/{lat}/{lon}/{dist}', radius: 40, refresh: 5,
+  exag: 3, trailMin: 4, ceiling: 45000, demoSpeed: 3, glide: true, hideLow: true,
+  tags: innerWidth < 640 ? 'compact' : 'full'
+}, savedCfg || {});
+if (cfg.source === 'airplaneslive') cfg.source = 'demo'; // retired: airplanes.live now needs approval and blocks browser calls
+cfg.v = 3;
+let proxy = null; // set when served by server.py
+// The shared feed: live.json and history.json, written by the Cloudflare poller.
+// ?data=<url> overrides it, for testing against a local Worker.
+const DATA_URL = (() => {
+  const q = new URLSearchParams(location.search).get('data');
+  if (q) return q.replace(/\/+$/, '');
+  if (/(^|\.)whatsabove\.nyc$/.test(location.hostname)) return 'https://data.whatsabove.nyc';
+  return null;
+})();
+if (cfg.source === 'cloud' && !DATA_URL) cfg.source = 'demo';
+if (DATA_URL && !(savedCfg && savedCfg.source === 'demo')) cfg.source = 'cloud'; // live by default on the site; a visitor who picked Demo keeps it
+
+/* ---------- reference data ---------- */
+// Runway ends are approximate (good to a few hundred feet), enough for a picture.
+const AIRPORTS = [
+  { code: 'JFK', name: 'Kennedy', ll: [40.6413, -73.7781], major: true, rwys: {
+    '4L/22R': [[40.6220, -73.7856], [40.6450, -73.7700]], '4R/22L': [[40.6253, -73.7700], [40.6455, -73.7524]],
+    '13L/31R': [[40.6579, -73.7905], [40.6440, -73.7621]], '13R/31L': [[40.6485, -73.8163], [40.6214, -73.7636]] } },
+  { code: 'LGA', name: 'LaGuardia', ll: [40.7769, -73.8740], major: true, rwys: {
+    '4/22': [[40.7693, -73.8842], [40.7853, -73.8702]], '13/31': [[40.7822, -73.8786], [40.7720, -73.8572]] } },
+  { code: 'EWR', name: 'Newark', ll: [40.6895, -74.1745], major: true, rwys: {
+    '4L/22R': [[40.6758, -74.1793], [40.7044, -74.1615]], '4R/22L': [[40.6720, -74.1752], [40.6998, -74.1572]],
+    '11/29': [[40.7068, -74.1830], [40.6990, -74.1628]] } },
+  { code: 'TEB', name: 'Teterboro', ll: [40.8501, -74.0608], rwys: {
+    '6/24': [[40.8441, -74.0682], [40.8540, -74.0538]], '1/19': [[40.8424, -74.0603], [40.8590, -74.0612]] } },
+  { code: 'HPN', name: 'Westchester', ll: [41.0670, -73.7076], rwys: {} },
+  { code: 'ISP', name: 'Islip', ll: [40.7952, -73.1002], rwys: {} },
+  { code: 'FRG', name: 'Republic', ll: [40.7288, -73.4134], rwys: {} },
+  { code: 'MMU', name: 'Morristown', ll: [40.7994, -74.4149], rwys: {} },
+];
+const AP = Object.fromEntries(AIRPORTS.map(a => [a.code, a]));
+const LOCAL = new Set(AIRPORTS.map(a => a.code));
+const normCode = c => { c = String(c || '').toUpperCase(); return (c.length === 4 && c[0] === 'K') ? c.slice(1) : c; };
+
+// Coastline: OpenStreetMap land polygons (via geo-maps, ODbL), clipped to the area and
+// delta-encoded in 1e-4 degree steps: [[outer, hole, ...], ...], each ring [dLon, dLat, ...].
+const LAND_ENC = [[[-740212,406859,-51,-11,13,16]],[[-751000,399000,0,394,94,40,-94,0,0,165,4,4,190,0,0,103,-194,-17,0,1428,12,0,-12,9,0,4513,41,0,-41,42,0,1670,161,122,-161,0,0,1662,212,0,-18,61,-194,-58,0,932,62,61,-62,39,0,271,28,21,-28,0,0,663,28,0,-28,21,0,561,83,79,-83,56,0,936,194,0,-194,145,0,770,59,75,-59,28,0,959,1,2,-1,1,0,242,2603,0,8,-6,0,6,8348,0,-56,-79,18,-82,-28,-82,-31,-83,16,-82,5,-165,111,0,187,-73,219,0,0,73,-188,0,-31,63,-72,102,72,0,0,76,-115,89,115,88,30,76,-63,0,0,79,2426,0,24,-22,22,22,3493,0,0,-243,36,0,22,243,8374,0,137,-34,-24,34,203,0,-106,-79,147,0,0,79,868,0,11,-19,421,-141,-147,160,945,0,0,-1500,-254,-62,254,0,0,-631,-84,-11,-36,-12,0,96,27,63,-27,43,-93,-43,-7,-165,-144,0,-54,165,8,83,-46,82,-41,83,14,82,1,165,-78,55,0,-55,-109,0,-43,165,5,165,-72,65,-220,6,0,-71,51,0,169,-127,0,-38,-77,0,-12,-165,89,-83,0,83,110,0,40,-165,69,-20,0,-262,-63,-48,63,0,0,-37,-170,-128,144,-100,-91,-41,-109,14,-98,-46,-89,155,17,18,-43,26,0,-22,-179,6,-88,-50,-75,40,-168,14,-173,-99,-34,18,62,61,-88,-30,44,2,-31,-33,-37,37,59,28,-31,36,-36,-71,45,-48,-119,18,-97,-28,-149,-120,-92,15,65,34,-63,-13,-21,104,37,-52,42,-1,15,7,-2,14,12,2,-13,-1,-13,-20,-41,5,-21,43,-14,8,-18,-8,-16,50,-26,6,20,11,-7,17,-22,-30,41,-61,-117,-11,-109,-53,83,65,-84,-35,23,83,-11,14,-13,5,-5,-2,-10,-153,94,-4,60,43,83,24,-148,-76,20,-74,-77,-32,-241,185,-148,49,-151,-32,-267,28,-69,-36,-267,-24,-43,54,141,-41,11,21,-18,-16,-64,22,17,42,62,17,-9,42,32,5,7,-48,8,61,-28,40,24,-40,-51,-20,13,-38,-60,-15,-13,-40,-107,22,-14,-65,-93,16,-6,-130,-72,37,-10,-67,-91,-68,-25,30,-115,-38,54,23,-37,0,23,25,-91,1,96,53,15,65,58,-22,15,13,-35,10,29,6,-3,7,-13,14,-9,7,-5,-31,-21,-1,21,26,-31,20,-18,0,29,-39,-172,-58,36,38,-21,33,-76,-47,-21,33,3,-30,-16,-16,-5,26,-83,-29,31,25,-27,12,47,24,6,12,2,11,-59,-32,-19,32,-124,-64,-6,87,-84,81,15,-91,-20,-5,-9,37,-34,34,-20,2,45,-33,-33,-46,-215,-7,-36,-52,-146,-25,-56,-65,-73,-9,-6,43,-55,17,39,37,66,-19,42,39,9,1,18,-20,15,-3,13,3,25,19,-48,-18,-28,51,-86,31,58,70,67,2,-30,19,-91,-52,-16,-36,70,-44,-89,-33,-77,44,-53,-138,-28,-22,9,57,-39,-29,-20,78,-136,-65,35,68,6,28,-12,19,-59,19,-19,-3,1,21,-23,20,-8,0,-8,-9,14,20,1,29,-16,-52,16,8,18,-41,85,-37,-22,-57,-23,-19,-22,2,-20,-15,39,9,-34,-71,-195,-31,0,26,-13,9,-7,1,17,-48,-91,23,-43,-25,-105,56,13,53,94,64,-124,110,23,71,-45,120,29,48,167,0,-169,66,-18,-31,-30,8,-190,-182,-85,17,-15,-21,105,-128,-33,-41,100,68,-8,-13,-155,-101,-232,-71,-144,-178,-109,19,-56,-120,-121,-20,-97,-164,-144,24,-95,-57,-94,104,-65,16,42,-22,3,-3,0,-11,-83,-26,-78,-100,-181,-58,-149,-185,-31,-15,29,36,-96,-33,-26,14,57,1,74,72,-134,6,-9,-64,-61,36,10,0,-28,21,-1,61,91,53,20,80,-27,6,-123,-120,-6,-45,-4,3,0,-30,-11,-80,146,-40,32,-43,-18,-83,82,-18,-17,-37,-138,1,-38,-11,-38,78,-195,-70,-268,76,35,82,-101,55,66,127,-91,-102,-67,90,26,-111,70,-63,-63,-16,-29,-52,-90,3,-129,-53,-73,-66,6,-48,-14,-18,-4,109,164,144,-122,-90,-45,11,-26,-33,31,-13,-106,-114,-73,15,40,8,-8,73,-56,14,55,49,-53,-18,-15,-29,54,-47,-22,-54,-36,15,13,-13,27,-4,19,-15,-63,-52,-31,-101,-90,-15,-109,-76,-120,28,-121,69,94,56,14,43,-336,-225,-102,8,-105,-62,-109,28,136,0,-175,52,-21,-52,9,0,-69,-109,-45,33,27,20,-104,-4,83,33,-147,-11,51,131,-15,86,71,32,21,59,-33,-16,-13,88,-35,45,34,-129,-15,-45,-34,-28,-30,-71,17,-65,-71,-51,-18,-75,-49,8,141,-79,14,43,22,-41,-22,-25,-109,3,-35,44,59,-8,-53,33,-44,-18,-65,-175,-57,-5,40,46,-30,65,-50,-74,16,74,-35,-10,-30,65,-27,-34,-43,34,-5,37,48,27,10,73,-22,47,-24,12,-11,1,45,-45,-9,-80,-57,-27,66,-127,-49,-105,73,36,4,-127,-3,26,-47,-26,-37,81,-26,-37,-31,53,-27,-154,-49,-25,-9,71,-21,-16,-11,-134,-126,28,20,127,-39,18,29,-40,-37,-80,-32,-6,-15,25,9,12,-6,8,-76,-59,-14,4,5,32,-6,4,-8,-42,-26,-7,-10,41,-49,-66,-51,5,95,-28,-104,-41,11,-43,38,43,23,-16,-80,-113,-59,109,13,-4,73,186,-38,-90,-63,-30,30,-24,-71,-68,20,-28,-75,82,-63,-77,-32,34,-30,-69,-131,-4,19,23,-40,26,4,-93,62,-33,-65,-101,-68,-32,-22,177,-42,-15,71,84,-15,31,-35,43,33,-66,-69,-104,-87,108,16,-163,-31,7,-5,-42,-9,84,-44,-74,-19,24,-22,-89,-49,-2,-40,-40,-28,0,2,7,-30,0,56,26,-31,78,-33,-16,15,30,-32,-8,16,30,-25,-2,7,-65,-53,-49,-45,-27,-21,20,-4,-45,-64,2,-29,60,58,5,13,40,-42,1,-10,113,-23,-52,-45,3,14,-100,-41,1,-99,-95,-24,23,55,72,-33,27,-49,-111,-19,68,-14,-58,-17,78,-45,1,35,-54,-52,12,63,-53,-32,-78,-135,27,-1,81,-33,-112,-83,-91,0,74,-48,-29,47,-46,-47,-51,-11,26,-65,-52,-5,-43,-32,0,96,-72,-13,-37,-171,-51,-74,-84,20,-63,-51,-6,29,-43,-92,-1,-42,-50,70,192,-74,-34,-28,-84,-10,28,-58,-50,-82,10,44,4,-22,37,-62,-74,-58,-1,7,75,-72,-7,26,-58,-55,19,-17,-19,156,-46,-35,-98,-65,-3,-27,-67,27,100,-63,-39,45,52,-39,-4,-45,-49,-11,50,-32,-61,23,-91,-121,-43,-44,-63,58,105,-66,-63,-28,59,-32,-33,38,-2,-3,-23,-71,37,-27,-26,38,-15,-29,-35,48,16,-15,-44,50,-16,-21,-53,-131,-78,56,112,-24,1,-57,-109,-68,-16,30,-6,-99,-70,-73,-120,-28,1,-20,21,-15,2,70,-58,94,141,34,16,53,-30,-42,-74,33,28,19,-23,-84,-39,-88,-192,-42,134,-38,-16,-69,32,-1,71,-66,0,25,137,-8,32,-37,14,57,84,-86,-74,64,-45,-31,-151,47,-76,-43,-23,104,-13,4,-46,-51,-24,14,-55,45,4,-20,-31,-21,8,-7,-4,-10,4,-9,-2,30,-127,53,-34,-41,-38,66,11,26,-64,72,-33,-55,-32,-38,40,21,-45,141,-46,-1,-30,-255,96,-133,-29,-47,-61,-82,123,-41,-67,-20,23,-40,14,41,-96,-74,-1,-29,57,-5,-21,-84,25,-34,-61,10,92,-19,14,-199,-14,199,0,0,-106,-13,-24,-218,60,-168,-102,-85,33,67,-61,-80,-86,-121,7,15,38,63,11,-13,77,36,26,-39,15,-51,76,-3,178,31,24,-32,25,0,20,81,122,109,0,-18,45,-77,-25,98,146,61,0,-40,30,31,47,-41,22,14,-51,-11,-13,-35,27,0,-62,6,0,-41,-49,-19,17,-69,-129,-15,-5,12,0,-63,-120,0,-9,-31,23,0,-121,33,24,3,-172,43,-116,-79,60,0,-68,82,0,5,-13,-135,-122,-63,-32,-105,-129,108,8,-41,-45,-153,0,73,-87,-73,-79,-27,0,0,-30,-5,-5,-21,-132,-84,0,0,-119,71,33,-13,-80,-58,0,0,-30,-137,-21,7,51,-90,0,0,-89,-92,-53,-11,13,0,129,3,44,7,-1,-7,5,1,23,13,4,11,67,-20,3,0,9,22,11,-15,15,7,14,13,0,-5,18,17,37,-15,18,15,0,-27,29,33,3,-29,17,47,135,32,14,5,4,11,6,-1,5,18,19,10,-3,-2,3,179,0,0,71,-151,0,28,15,58,80,65,0,0,90,39,55,44,22,17,63,171,239,45,30,5,63,37,72,-10,63,3,5,92,130,81,0,4,119,44,19,34,-44,4,24,49,-9,0,-15,15,12,8,-2,-6,3,78,59,-95,0,0,-50,-68,36,-60,16,128,101,0,130,75,99,-12,83,37,83,57,83,-58,83,121,114,11,52,-11,0,0,61,138,105,-88,0,49,166,29,166,53,83,-48,82,86,117,19,49,8,166,35,166,-76,0,14,112,46,53,-14,166,7,165,20,83,-32,83,-11,165,-16,73,0,164,-40,-31,-179,0,-80,125,192,0,-112,86,-113,79,-107,79,-220,180,-220,12,-219,9,0,-115,142,0,0,-165,22,0,55,-40,0,40,40,0,-40,-63,-94,-102,94,0,0,-38,220,-163,0,35,2,0,147,-165,36,-36,-179,-129,214,-176,0,271,95,-95,-21,-166,-36,-165,-38,-83,35,-83,-68,-165,1,-166,6,-166,-29,0,55,-40,0,40,23,0,107,-166,3,-165,0,-166,-34,-166,75,0,-174,-131,0,-159,-54,-42,-21,-166,-45,-83,26,-83,-126,-137,0,-108,-114,-87,-106,0,0,-83,103,0,-42,-83,-61,0,0,-118,-17,-34,-37,-14,-28,-113,-27,-54,-110,0,0,-138,47,16,-23,-44,-24,0,0,-43,-41,-34,-56,-37,-4,-13,-48,-39,2,-60,-104,-104,-19,-3,-14,-31,-13,-14,-56,-120,-23,-1,-91,0,27,-20,0,-45,-13,-1,13,-8,0,-198,-27,-27,-88,3,68,-8,7,-8,-21,-21,2,-36,-27,-8,29,-9,1,-18,-27,-13,28,-17,1,-12,-12,0,13,-14,2,-34,-4,-9,-92,-75,-25,2,-48,-61,-72,-29,-35,-42,-75,50,-45,-37,51,1,-42,-89,-25,32,-76,1,87,-73,-62,11,67,-35,-50,-18,26,-21,-83,12,166,-73,-19,-32,-211,98,-85,-8,280,-112,-24,-32,-359,98,170,-55,23,-111,-99,-46,-187,36,-44,-67,-236,-23,-2,69,268,273,65,166,89,81,-46,11,-13,82,92,64,45,151,197,114,-17,75,-174,-11,74,159,-32,103,183,158,-29,23,211,100,-23,27,-68,-13,-113,-85,-153,103,128,-99,-106,-115,-51,8,16,41,-17,11,13,7,-61,22,26,25,12,27,-17,80,-27,-135,64,-36,-16,-43,70,-18,-57,-71,1,13,-12,0,0,13,-255,-13,254,-191,-49,-76,41,-60,162,0,0,-28,-185,-72,-87,-104,6,-55,-127,-48,-40,52,33,180,-68,27,50,-55,-55,-395,-83,-96,-67,71,-143,48,171,-112,-82,-91,-148,92,-14,-20,215,-134,-99,-143,-86,31,-67,-76,-266,-106,-81,-91,-62,-12,-17,-276,55,-56,-16,-49,-68,14,-47,71,-165,-60,122,13,37,38,83,-99,-88,-291,-53,-54,-113,38,-226,-134,-8,60,29,0,17,12,-46,-3,-8,-24,25,-87,-10,-83,46,-140,-61,-37,-99,-196,-121,9,-10,-19,-104,136,0,14,-219,0,0,-41,51,39,146,-165,22,-45,170,-37,-28,-26,49,-13,73,-185,61,-9,-141,-103,147,100,116,-70,169,-53,-79,-60,123,0,0,46,136,-43,31,-77,-55,-21,-8,-21,213,72,31,44,91,0,0,105,31,1,180,-109,21,49,30,-38,57,11,125,83,278,-138,242,-64,18,-28,16,-4,-30,-22,43,18,-25,12,-3,4,3,7,204,-113,-3,-36,7,34,194,-68,60,26,-9,-27,352,-59,172,-85,10,-182,-124,-9,-71,71,-137,-13,-36,46,-60,9,83,-57,3,-54,-262,-103,-67,17,-6,14,-6,-2,-12,10,-8,-1,68,-44,-200,-62,-24,-82,-165,-55,48,-31,-48,-64,31,-33,-27,-14,-40,14,-18,-5,28,-69,-19,-8,-39,14,-26,-4,-8,-14,3,-65,-5,-3,-53,3,-9,-2,-9,-21,-22,12,23,-14,13,23,28,-3,26,1,11,2,8,-12,23,2,-28,89,34,-5,-21,-27,104,0,-51,22,18,4,1,46,-29,26,66,-11,20,15,-1,13,-24,28,61,42,17,66,66,-27,91,26,137,130,157,-2,79,87,91,-5,49,31,126,-38,169,8,33,-109,-31,-53,-27,-10,-16,49,-43,-14,55,-36,-33,-28,-54,16,-8,-38,-63,33,29,-28,-41,15,23,-27,-43,6,-49,-66,-53,0,46,-10,-14,-41,-80,26,-17,-43,-43,33,20,-33,-93,-3,-5,-28,172,0,-138,-53,100,22,-47,-94,-98,-2,-173,-73,250,58,-33,-70,-89,-15,75,4,-8,-29,11,2,37,68,65,-10,-29,28,80,84,28,-3,-65,-40,1,-23,60,0,37,24,-26,29,103,33,17,-127,-62,-24,22,-14,-25,-15,-40,0,18,-12,-20,-12,-20,-49,60,46,2,-1,0,3,84,64,79,-29,-80,52,-4,86,67,-31,31,21,17,-47,9,59,-111,20,7,36,33,-7,-74,34,2,15,73,2,2,-42,60,71,20,-49,42,4,37,323,-59,436,-95,77,61,-26,-25,90,-81,35,21,137,-111,50,-40,182,-116,42,12,62,88,9,39,38,126,-137,93,-205,17,-272,66,-150,23,-724,-92,-527,-253,-940,-206,-557,-34,-156,-167,98,-9,-132,-431,0,0,230,-115,-230,115,-77,220,40,220,-98,147,-39,-44,-162,-141,0,38,-89,87,30,-216,-800,-180,-922,-78,0,16,27,-31,67,96,211,-60,2,53,24,-48,6,45,1,-44,7,44,17,-43,53,49,80,-44,86,48,-19,32,111,-53,-22,23,-44,-72,39,98,32,39,73,-28,43,49,-4,-40,31,47,-2,-54,15,52,-5,1,3,-52,4,0,4,56,1,-48,6,-4,11,55,-2,-45,17,48,0,-40,10,40,0,11,46,-25,-24,-45,16,27,5,-26,8,15,71,39,-37,11,-34,-30,25,-3,-32,42,9,-7,50,27,-3,-31,9,43,14,-59,19,39,-6,9,37,-43,-13,69,40,-7,-53,28,65,16,64,-82,-30,33,40,53,-1,-37,23,44,1,-46,1,-11,-19,-7,38,52,-16,-5,24,14,0,6,-23,16,73,-33,-35,-56,-16,-9,18,102,53,58,253,-35,27,38,-6,16,97,-30,7,3,13,-28,10,11,-55,-128,-24,-25,22,-20,2,-37,-36,-74,63,-64,9,-28,103,-24,5,15,-113,143,-61,-243,-17,220,-7,97,21,37,-41,-435,3,10,-28,-150,107,7,-29,-47,29,-23,-21,-12,39,-24,-13,-31,50,-56,25,31,-39,-12,13,-27,12,7,23,-46,16,115,-119,37,14,6,-39,79,-8,-29,-23,15,-16,18,9,13,-3,-3,-4,-103,-30,111,5,169,-65,51,42,105,-47,92,49,40,-23,157,12,-20,-56,-30,17,33,-24,-25,-1,2,-17,54,-15,-59,-15,12,-38,-107,-37,-41,36,-15,-52,-62,16,-8,-24,60,-7,-57,-24,9,-29,57,-11,-74,-80,-68,37,-52,-46,-41,1,49,35,-81,-9,-29,82,-117,91,40,-88,-61,-12,-116,113,-29,8,42,-59,-72,23,118,-64,-109,-17,122,-17,-7,-23,-158,-7,6,-12,202,1,92,-58,49,12,-21,-93,-24,-20,-26,58,43,-13,-13,-28,27,52,-32,-15,0,39,-3,-38,-9,3,3,40,-24,-26,0,38,-12,-35,3,37,-27,4,17,-45,-29,22,-51,7,99,-58,-14,-22,3,18,-58,17,54,-19,-59,-1,63,-19,-9,-24,-105,-8,-20,39,13,-40,-129,44,43,-49,-49,21,-14,-18,67,-16,-87,16,-62,-36,58,-19,-22,-36,38,40,-31,-44,39,-15,-33,17,53,10,-31,22,37,-14,-31,22,41,-18,-29,-45,42,-4,-33,17,38,-8,-13,28,102,-39,-45,-23,69,-44,-25,-20,65,12,23,-68,40,21,-37,-48,83,-1,-21,-64,-80,-34,-63,20,133,-55,38,41,-6,-93,-81,-39,43,-6,-14,-30,-49,-2,1,46,-5,-47,-113,-17,-21,22,-37,11,53,-34,-46,-55,-137,35,-41,57,-39,-11,-62,44,-37,-25,-37,17,-57,5,29,-8,-21,-36,0,34,-61,-23,-47,39,-84,-5,32,-38,37,23,-22,-38,25,16,106,-70,60,27,206,-44,-27,-3,42,-25,-49,-23,105,23,45,-44,97,-19,114,29,8,-31,-34,-4,53,-1,7,39,107,0,4,-45,-17,-34,-12,-1,18,30,-43,6,13,4,9,16,11,-10,12,-2,1,6,-13,-1,-1,7,-36,6,-15,-9,-12,15,11,-17,34,3,-16,-18,11,-23,-27,-10,8,-14,47,10,1,-24,-130,-85,-63,19,36,16,-73,-16,42,-3,17,-13,-33,-26,13,32,-74,-25,13,35,-25,-34,18,38,-22,-38,9,39,-22,-38,10,38,-22,-37,9,38,-43,-37,18,38,-31,-37,18,37,-43,-45,188,-27,20,25,-14,-29,-49,-41,-6,40,-8,3,-9,-2,-4,3,-29,0,48,-68,-69,-5,-3,-2],[-734766,414976,0,-422,-168,-127,168,0,0,-144,157,144,-14,330,297,0,0,-160,77,160,-77,58],[-739715,413108,-62,165,72,165,-114,0,0,-140,-34,-25,34,0,0,-19,-96,-146,96,-29,0,29,104,0,2,-82,28,-83,85,-43,0,-122,-219,0,0,-95,219,-26,183,-37,-48,158,85,77,106,88,-106,60,-220,-45,0,228,-88,-78],[-748014,401789,-36,-336,101,-135,87,-33,-87,0,0,-26,219,-36,12,8,104,-39,-48,82,14,11,-39,168,-43,0,0,-66,-38,66,-112,168,97,168,136,275,-63,-37,80,97,-100,46,0,-155,-219,-129]],[[-735702,410050,-8,-32,-138,-7,-8,36,32,29,63,-38,33,32]],[[-736619,409799,-4,22,61,-16,-1,-6]],[[-740909,407757,14,-107,-23,-35]],[[-738838,407956,117,-47,6,-40,-177,5,-27,92,45,18]],[[-739615,407497,53,64,26,13]],[[-739496,407639,39,47,40,3,-51,-50]],[[-741226,399822,-54,29,129,94,23,-44,-53,5,4,-51]],[[-740867,399456,-22,44,12,16,57,-34]],[[-725208,408328,-32,33,83,10,-14,-24]],[[-734588,410527,-32,6,43,63,39,26,16,-33,51,19,-1,-30,-67,-5]],[[-734228,410472,58,68,41,7,-1,-26]],[[-737796,408866,-23,-51,-48,17,33,49]],[[-737699,408800,-47,28,41,51,36,-24]],[[-724525,409568,-157,115,-37,91,7,76,9,-82,119,-9]],[[-733912,410636,-30,35,73,10,2,-20]],[[-740417,406207,29,189,126,64,-31,28,42,-21,39,76,40,5,-31,22,60,-3,-12,40,69,-12,-17,31,65,-7,-11,32,41,-21,-21,35,37,18,44,73,60,-13,18,75,-37,-60,-33,4,-14,-6,-48,-69,-67,-25,15,48,-21,-39,-23,15,-17,-36,-48,-3,-15,10,-13,59,26,-67,62,43,-54,18,8,36,-39,-24,-7,68,136,71,3,31,17,7,6,7,23,-5,-20,9,58,63,6,44,22,27,125,13,0,-43,37,29,25,-47,47,3,-12,89,20,-38,27,-16,2,91,19,15,-19,0,0,30,53,83,41,-7,-38,13,0,23,17,8,19,16,-1,165,12,18,38,-12,-31,14,101,121,54,27,-31,0,26,31,64,30,-4,24,36,44,31,-2,52,39,210,0,-1,-3,6,3,79,0,0,31,38,-100,63,5,-10,59,97,15,40,45,-14,-52,176,-86,-31,-20,52,-26,17,-24,-51,37,-63,-20,36,-48,81,-27,127,49,-24,-106,40,96,-27,39,-86,-5,-15,156,-58,-3,-40,37,65,24,-9,60,145,30,17,-82,60,-3,23,78,94,45,254,-59,16,-62,167,72,53,-76,-45,-11,220,-227,-17,130,27,47,47,-26,13,35,-64,40,-9,135,-100,62,-14,63,114,83,-34,118,33,48,336,-176,107,-271,-18,129,71,108,-3,127,49,39,-66,62,19,-34,-54,-30,-33,53,44,22,-10,4,-85,-41,-101,10,2,-55,-17,90,-82,60,104,85,-31,97,100,-5,21,19,0,-37,68,0,-59,44,34,31,384,-140,138,-221,120,-73,-75,-21,39,-203,39,-47,54,221,-35,-1,-53,123,-2,134,52,72,13,-20,110,81,-135,-63,-29,17,-43,66,18,150,22,26,0,-10,177,0,-114,86,63,77,54,12,10,51,147,-48,98,55,51,-13,82,60,153,17,17,9,141,-104,129,96,39,-11,253,93,66,-48,-48,0,0,-46,55,41,67,-48,6,-70,-95,-6,-26,-141,-132,-14,-8,49,100,77,-6,141,-38,23,-80,-93,-124,-14,4,-172,61,-91,113,10,249,-56,-33,206,143,20,79,-192,146,-80,90,-1,-66,-18,57,-73,30,117,-102,48,-17,193,-169,248,-73,39,46,145,0,-45,50,67,50,-6,-52,42,-43,-25,23,-38,-37,24,12,22,85,66,57,-59,139,-52,221,-13,121,-67,14,-96,-70,-60,43,77,0,34,-204,-103,-268,-19,303,3,73,-52,74,12,-34,-73,-77,-19,196,-42,54,-109,34,44,-26,62,-84,62,-48,-14,-10,62,243,-16,125,46,113,-49,111,-117,-13,85,-60,15,65,113,154,-125,-38,-129,90,23,-34,20,50,71,-61,101,29,29,58,-32,5,3,-48,36,16,102,-174,65,-92,-48,-13,33,62,50,49,-27,-121,114,43,-91,-85,36,35,-90,-60,-25,7,-28,-144,70,-46,-139,63,400,81,-11,230,-211,231,-79,11,-49,5,74,224,23,14,-4,-21,0,0,-29,34,25,521,-145,54,-8,-8,-9,-11,0,70,-53,0,54,186,-28,33,-26,0,14,12,-35,38,11,80,-103,86,-4,4,-47,214,-111,-146,162,-62,3,-6,65,-113,51,753,208,-114,-83,-73,6,38,-29,-47,26,-68,-39,20,-21,-28,24,34,21,-81,-29,-25,-107,70,-98,72,-34,-18,108,199,138,22,0,7,-26,8,-3,-10,32,-29,6,5,18,71,75,10,45,18,3,7,-21,9,-3,22,43,-69,8,21,1,16,22,16,87,-42,-31,26,-39,-43,-36,-31,-102,35,296,-147,119,239,-3,164,106,124,-74,127,-7,34,-31,-153,18,-102,62,-19,-78,-109,-73,13,-39,-114,-87,134,0,0,63,53,4,5,-33,16,-24,11,-6,3,0,-26,164,61,66,44,-19,23,-67,60,-8,-2,-66,-109,-43,95,-63,-1,51,73,22,-43,55,30,20,179,-69,50,-54,58,48,-115,159,49,18,-13,28,-52,-33,-94,13,-20,32,144,5,319,-89,55,-77,24,34,136,3,35,31,-222,2,-2,20,875,11,413,-40,457,40,15,-40,-9,40,44,-26,334,65,561,-51,798,150,555,11,528,164,246,176,31,-31,41,2,0,-160,-210,-166,162,0,48,-47,96,47,-96,0,0,166,198,166,-159,0,-2,5,-81,6,394,258,448,143,262,308,258,24,0,-81,205,0,-133,100,186,71,135,180,199,110,89,146,196,-12,2,-15,50,12,48,-3,25,21,211,52,-150,0,28,24,53,-10,75,57,0,-206,-80,76,-87,1,-107,-82,-86,-137,-50,16,41,-15,-27,-38,-87,-26,-25,58,-11,-20,-38,24,70,-62,-9,-62,-124,76,59,-101,-58,-24,-23,-75,-112,12,-80,-58,75,-67,19,-33,-4,-16,-11,-3,-26,9,27,-7,3,27,-37,-17,-59,28,-122,-45,-6,21,4,-22,-9,28,-88,-51,25,-31,-95,-108,-70,46,-38,-17,55,-41,-59,10,14,-28,-107,-12,73,-7,87,25,34,-59,254,-35,61,18,-3,-10,-53,-25,34,-30,-44,-129,-328,27,-27,14,102,14,-42,33,-49,-35,-4,52,-68,-14,58,-41,-34,-2,-7,-10,41,5,-31,-14,-84,13,-92,-98,-18,-63,169,-390,-41,85,-177,104,-34,40,33,-21,-4,48,-63,25,117,66,-48,11,20,-16,-46,-21,21,16,-54,0,-23,33,9,-33,-46,0,-37,83,-23,-22,-6,23,-17,-1,45,-117,30,-8,0,-43,-26,-14,-62,21,-6,43,-28,-2,-6,-24,100,-44,-18,-130,-171,7,77,62,-80,35,-55,-35,53,-62,-74,3,-115,-60,-151,-34,-97,29,-13,-42,53,0,-10,-2,-190,-237,-234,-165,14,44,-3,5,5,9,-3,4,-22,-60,20,-11,-58,-50,-57,17,-86,-68,-105,57,-61,-19,-24,61,-59,-94,-37,99,17,-89,-29,33,-17,-31,-102,18,116,-28,10,-34,44,22,-54,-54,-125,17,72,-27,-161,-33,0,11,-19,-15,-43,-8,-63,22,-31,-23,1,-8,128,11,-51,-38,49,0,1,-10,29,-3,-8,13,7,0,0,27,95,-7,41,30,102,9,44,-6,-48,-1,-6,-38,-83,-40,90,-7,-22,-58,78,30,2,-22,7,69,43,16,11,-41,-8,49,49,8,8,-110,26,101,88,-139,-12,86,32,-17,8,23,51,-29,-5,-81,11,26,43,-18,-49,34,67,41,47,-21,23,2,-4,-23,15,-3,13,-50,19,-9,21,19,-61,55,31,44,-68,-26,77,91,-53,29,169,-43,-101,0,88,-65,69,51,76,-19,337,-133,-43,0,0,-38,48,36,38,-15,432,16,56,58,-137,19,-20,-31,-38,-29,-57,-6,268,195,69,234,220,-166,0,225,-78,0,140,11,105,40,273,330,0,-49,150,0,-118,89,8,9,30,119,-63,202,106,-257,164,18,14,-37,30,14,-33,44,53,11,138,-57,82,47,55,99,-138,152,-23,80,2,4,192,74,130,-193,0,-96,-49,-1,49,-75,0,-11,-154,58,51,-76,-77,2,-111,-74,26,-44,-2,39,51,20,27,-29,10,13,84,-47,21,-5,27,3,-43,6,-28,28,113,3,-12,25,-50,26,-68,-44,-9,62,77,-17,67,39,0,-223,-18,0,18,-13,0,-651,-231,0,-109,83,-182,-83,-211,-271,393,117,334,46,-605,-224,-306,0,93,-79,-395,-146,0,32,90,25,-1,86,-28,-75,-42,33,8,126,-24,-17,-3,4,0,70,-77,-59,42,-159,-6,-35,-92,20,-8,47,-27,-17,-27,100,29,-6,28,97,-44,-19,-13,22,-36,-93,6,70,-50,-31,15,-31,-50,14,9,30,-44,-9,22,-23,-325,53,-116,-24,-18,-50,88,-14,3,-38,-116,-176,9,-70,-63,44,9,1,2,34,-19,-38,-34,13,21,49,-42,-50,-20,8,4,12,-4,11,6,33,-3,1,-8,-51,-39,-10,-61,103,5,-101,65,-60,-173,56,79,63,-29,55,-84,31,-9,-81,-94,-93,-2,-103,-112,10,-58,20,-14,58,-81,0,65,-70,-34,-48,-56,25,54,-29,22,1,-16,-52,-118,45,33,-30,-54,-12,78,-13,-45,-40,39,-47,-145,17,109,-54,-4,-9,48,28,133,-14,-61,33,73,18,19,-22,-57,6,18,-23,61,6,26,14,-31,38,65,-38,-15,48,54,6,14,-38,16,35,57,-16,142,50,36,44,27,-31,242,75,-19,51,96,-25,124,17,2,-26,-2754,-765,149,118,62,-20,21,60,30,-53,0,29,20,-22,173,49,32,44,3,-41,195,87,48,-22,61,40,36,-12,-18,22,63,-10,10,32,96,-3,582,159,89,53,-74,-9,-17,-40,-90,-22,-1,24,-12,-29,-10,30,-4,-31,-7,33,-73,-12,-47,78,35,59,-51,-18,-6,25,-27,-206,-80,-31,-73,69,-35,-90,-19,35,-51,-29,-99,55,-20,70,-50,-75,-74,-17,-92,20,0,148,-84,-40,84,-108,-57,13,-19,-73,-169,21,-141,106,50,115,-56,-62,-39,4,4,91,-35,-97,-75,53,85,-81,22,25,-40,-145,-230,30,21,-76,64,-9,24,-69,-57,-6,-127,97,-14,-60,111,-66,-175,-7,-27,143,0,-148,-232,31,-73,-22,-9,-19,-124,98,-161,54,56,-166,79,-21,26,-53,32,-7,-76,-8,100,-4,5,-71,-57,-51,-160,-16,-76,-53,-89,60,35,-113,-62,-17,11,15,2,10,-3,8,-51,-19,50,16,-18,-32,-80,-16,-11,40,9,0,0,14,-11,-8,-1,2,-3,-5,-4,-3,3,0,-11,-20,-36,27,-32,-1,38,-63,-66,-14,-9,42,2,-71,-85,63,-35,230,-79,31,-18,46,-25,-31,56,-44,-15,-61,-325,-18,-170,-129,-8,-52,-427,93,43,11,-51,7,56,108,-66,-102,18,-38,-58,-8,0,46,-68,-51,-219,9,-22,37,5,10,-1,9,-7,14,5,12,-10,20,-1,-64,30,-46,-113,-98,-25,-77,-23,43,12,-46,-160,-12,13,23,-1,43,-20,-71,-401,-80,-25,24,-77,-36,-174,86,-113,-14,-80,-54,57,-30,-84,-54,-7,10,-37,4,42,-16,-53,-134,-271,23,30,55,-40,-49,-45,19,-54,58,24,1,37,27,-60,-18,36,48,-64,-39,-6,-57,-113,23,-13,170,-21,-133,-105,-59,-31,55,-33,-41,5,60,-13,-59,18,205,-24,-19,-16,23,-28,-110,-49,15,20,74,-28,-81,-53,-2,-49,60,46,-72,-43,-48,61,5,2,-1,-106,-44,-27,18,10,-53,-76,57,0,43,-78,0,78,-59,0,15,73,-59,-147,-83,-44,54,40,-56,-117,-86,0,38,-13,-39,-20,19,19,-39,-59,27,-39,-24,34,32,-52,38,15,-75,-37,36,3,-30,-40,31,6,-33,-22,4,-10,50,-12,-45,-18,100,-16,-84,-23,25,9,-32,-32,4,12,23,4,17,-42,-38,7,50,-8,-43,-23,40,-13,-46,-1,48,-8,0,7,-49,-13,39,-15,-37,-15,93,-17,-86,56,-23,-2,-53,-50,55,22,-45,-47,44,8,-47,-19,46,-1,-9,0,11,-19,-15,-4,9,3,-9,-26,-20,-26,10,-61,-87,-15,13,25,9,-24,4,24,4,-22,2,22,7,-21,1,21,9,-19,0,9,65,-5,18,-34,-69,28,10,-23,-37,20,-33,-47,-41,-91,131,21,-152,-29,35,-1,-32,-34,15,32,-6,-82,96,39,-78,-27,-1,2,-13,41,-13,-44,6,6,-29,-64,-8,2,36,-9,-37,-3,55,-15,48,8,-96,-9,1,9,-24,-61,-24,-21,51,-3,0,22,-57,-36,-9,-31,67,6,1,-6,0,-12,39,-26,-71,-3,0,-31,52,-14,6,13,-40,24,-18,-56,0,18,-31,53,19,20,-14,-40,-11,56,-18,-97,-4,-17,76,14,-73,-20,8,4,15,-20,72,8,-98,-70,-25,-1,74,-8,-79,-47,29,12,20,-3,66,21,5,-26,6,-36,-128,-43,39,0,3,21,-15,0,64,-26,0,-5,61,-1,-61,-53,0,51,-39,0,-32,-66,-18,-34,57,-8,-45,-70,26,2,-87,-36,42,9,-37,-33,9,-14,38,-1,-38,-35,49,11,-34,-40,26,-29,-18,20,36,-4,33,13,5,-4,6,9,9,-1,6,6,3,1,3,3,22,-19,-43,-42,22,24,-79,-29,-16,-21,51,5,-75,-26,35,-18,-64,-22,30,13,-36,-61,-15,-48,61,30,-11,28,4,5,8,6,46,-30,-57,-49,46,27,37,9,53,-43,-102,-10,0,21,48,1,18,-34,-52,15,31,-1,16,12,27,2,20,-35,-86,-9,-75,-46,-8,-5,96,-10,2,12,-97,-52,15,41,4,-9,51,6,-49,-43,-1,-43,-74,-131,-64,59,-17,-59,-120,-21,50,-38,-6,3,117,-78,27,13,45,-58,-82,-51,34,-14,159,-17,-27,-12,23,-15,4,48,-145,-68,31,4,8,-8,67,-22,-62,58,-61,-19,-38,-33,44,-55,3,-19,40,40,0,-43,33,0,-27,-19,42,1,-57,-48,48,43,-121,-81,19,-56,68,21,-48,-35,-43,43,-30,-69,-56,-33,172,14,0,0,29,-17,-12,-4,22,-4,-28,-15,-11,13,0,-6,-41,-49,14,-10,45,-17,26,9,-76,56,-10,33,-104,-14,-21,-43,29,38,-30,-50,-55,-31,101,9,-78,-33,3,38,-27,-29,-4,-54,149,20,-115,-28,-10,-11,54,3,-57,-12,58,-2,-58,-29,133,9,-81,-43,18,-59,12,25,27,-40,49,-2,-68,58,-63,-18,-72,-60,17,-6,31,-24,39,17,-78,-72,2,-57,70,-72,23,56,-44,-7,-76,-139,-84,-103,33,-8,-80,-47,-99,-145,-11,5,94,111,61,-14,44,62,2,-33,10,-7,27,-27,-33,-37,66,22,44,-47,-31,43,38,2,13,-69,-61,62,130,-53,-6,30,43,-33,-9,-3,-36,30,-6,-44,-12,-12,-116,-37,5,-1,56,-97,5,23,26,10,23,-77,-82,11,39,-30,-19,-20,36,-8,2,26,-49,-41,-11,-47,121,21,-93,-117,-131,-37,-10,3,38,-23,23,-38,14,-10,-21,63,-20,-31,-98,46,14,0,-38,-46,-13,74,-17,16,-54,-3,59,42,17,96,-37,-16,-81,-290,9,-6,66,-7,-66,-164,28,4,40,65,37,2,30,-96,-56,6,-73,-764,-116,-905,-261,-373,-144,0,116,144,74,149,37,99,-22,90,57,148,2,258,128,306,52,118,68,39,-28,-21,35,54,-16,-5,61,163,45,-38,-41,6,-44,116,148,39,-7,-9,-44,-66,-62,67,35,14,-36,56,-4,-29,24,19,95,-43,39,70,6,49,-51,65,8,-83,44,80,18,-30,23,-120,-15,66,62,152,64,36,-18,-22,30,84,18,-26,54,-58,-10,9,35,-27,48,-59,26,73,-61,-10,-63,-178,-71,-42,-81,-66,75,-79,-71,-42,24,64,72,-390,196,-5,96,110,12,-120,-2,0,-118,-56,8,-1,68,-30,-22,-13,40,-6,-98,-58,141,38,-168,-150,-4,17,60,-68,-1,-36,41,24,-113,-111,-40,-110,148,96,-163,-38,-22,-175,133,140,-135,-56,-76,-137,-58,2,-76,61,-42,-97,-52,-17,62,-74,57,14,-23,-86,66,0,-77,10,0,-45,-61,51,-51,55,-12,249,40,72,-206,-30,-48,-154,-35,-42,111,-123,-17,-19,68,-10,-15,-71,57,10,25,65,-45,-11,37,-63,30,-30,-21,-56,43,160,-152,-105,-32,-31,30,38,25,-59,-16,-26,54,13,-81,60,-21,122,13,14,-42,-419,12,209,-17,15,-52,-619,-59,-90,-2,-92,42,-9,58,55,21,180,-33,19,10,-51,14,14,33,-99,-13,73,56,-73,-23,33,48,-122,86,-207,48,-63,47]],[[-723063,411102,63,45,0,-25]],[[-739175,407850,78,59,135,-43,8,-11,-29,-14]],[[-739067,406140,50,-82,-119,-18,-31,28,22,72]],[[-735740,409135,36,20,70,-20]],[[-724235,408572,-511,-190,6,51,135,69,361,101]],[[-734407,406205,-62,-3,-8,37,95,8,-7,30,45,-28,2,-31,10,26,-49,53,169,14,-28,-28,59,-28,-160,-51,2,-26]],[[-734818,406220,-50,20,-73,3,138,17]],[[-734311,406175,2,38,140,29,-3,-32]],[[-736724,405972,-60,19,61,49,-34,-20,-18,14,52,63,15,-48,-7,-4,2,-71]],[[-735741,406150,52,32,-47,33,124,-58,-85,-35]],[[-735265,406087,-41,-38,-52,53,42,74,70,-39]],[[-733545,406360,5,-4,-128,-2,26,-21,-59,-17,-16,23,17,41,22,-18,0,42,71,-3,-41,10,93,61,72,-38,19,43,86,7,-21,-86,-112,2,-26,-42]],[[-734177,406328,-62,17,6,12,55,9]],[[-736596,406079,-62,5,52,73,5,-13,8,80,57,-51,-32,-77,-20,15,10,-25]],[[-735190,406283,71,-16,9,-52,-84,-27,-9,4,-24,20,-5,-18,-73,14,-20,101,37,-46,79,6,-12,-40,62,23]],[[-732800,406468,-63,15,70,62,25,-9,-10,-21,13,14,3,-13,15,-14,-16,38,104,13,-21,29,44,9,32,-48,24,-7,-83,-63,95,0,0,15,17,10,-19,-34,52,-12,-158,-15,-119,24,53,22,-44,15]],[[-732568,406532,8,-2,-8,8,0,7,-4,-3,-6,6,79,-2,4,-26,-33,5,0,-27,-23,23,-17,-18]],[[-732280,406488,-53,13,-19,13,107,-22]],[[-735553,406222,-41,63,102,77,-12,-91]],[[-732985,406412,-67,13,0,25,34,4,-28,-26,46,27,33,-20,-11,44,47,10,38,-51]],[[-735536,406152,69,8,40,-60,-17,48,94,15,-50,-68,72,-45,-140,-36]],[[-736121,405980,-48,50,52,-6,25,41,11,6,15,-39]],[[-735492,406270,2,47,19,27,55,-34]],[[-734783,406394,-84,19,7,29,50,11]],[[-735016,406149,-24,38,58,43,-21,-61]],[[-733966,406351,-24,0,-31,21,74,19]],[[-735860,406049,-18,67,-63,47,73,-14,16,-47,116,-11]],[[-732474,406482,-33,-7,44,39,-49,74,80,-54]],[[-733801,406323,-83,44,-7,18,81,2]],[[-736316,405980,-30,23,36,72,72,24,-2,-49]],[[-731891,406588,109,-29,-50,20,48,12,28,-29,-32,-32,-124,41]],[[-736782,406088,-17,-18,-9,22,0,-4,-35,10,34,-22,-35,-32,-59,5,-53,119,10,44,48,13,73,-44,-13,-30,30,3,0,-23,38,49]],[[-736676,406114,-51,13,4,38,99,55,11,-40]],[[-736405,405993,-39,11,45,76,-21,29,74,6,5,-65]],[[-735893,406024,-51,18,-4,98,67,-38]],[[-736195,406052,-37,18,14,81,70,-1,-14,-10,49,0]],[[-735399,406172,-119,20,-2,36,74,50,41,-14,-24,-49,47,64,52,-113,-83,24,-23,12,-6,-12]],[[-734334,406170,-138,-17,-13,8,57,41]],[[-734006,406322,-67,-74,-78,2,19,101]],[[-735198,406041,-31,0,42,107,123,10,3,-32]],[[-731964,406539,-74,24,0,19,107,-22]],[[-734831,406073,3,30,90,45,-34,-59]],[[-737037,406032,48,56,51,19,-13,-43]],[[-734134,406368,2,72,55,-3,9,-28]],[[-736117,406034,-36,8,55,85,20,-39]],[[-734840,406141,-118,15,0,66,133,-13,52,27,-3,-39,73,51]],[[-738207,406081,1,43,-20,-20,-28,36,110,0,-49,-165,-19,-27,-60,8,3,32,55,12,-30,3,34,10]],[[-738324,406233,16,26,-24,129,66,-32,31,38,75,-199,-121,75]],[[-737912,408545,22,40,75,-98,-13,-124,-87,105]],[[-741988,406017,-39,59,11,64,32,-4]],[[-740859,399414,-15,-12,-98,49,54,0,0,-17,42,0]],[[-736621,406022,-18,-55,-51,77,72,11]],[[-735709,406044,-46,-66,-145,-14,68,81]],[[-735542,406088,25,-91,-47,-21,-38,-10,-6,1,68,24,-119,15,-13,69]],[[-740734,406369,4,-66,49,-15,-48,12,7,-54,184,-187,16,-61,-491,-443,-162,-83,-343,0,102,-78,-1,-24,-359,-177,-70,0,-104,-93,-25,15,31,23,-73,0,0,-11,-53,-8,-105,-86,-318,-68,-64,111,43,69,56,14,-20,18,79,24,-39,49,28,85,-70,96,193,132,100,-16,61,26,56,227,53,-41,0,47,-52,0,22,88,78,71,-15,118,37,57,-59,30,-10,56,70,148,98,68,56,9,13,-25,30,26,157,-74,248,41,55,-7,11,-38,8,28,158,49,260,38,137,-37]],[[-741357,405302,-7,-7,-39,60,38,1,8,-6]],[[-737699,408595,46,-43,-42,-24,6,-77,-36,66]],[[-737401,405860,-149,-28,111,96,313,-46,260,6,38,32,326,28,43,1,3,-53,2,53,26,-53,2,54,27,-54,14,55,4,-56,-1,56,56,1,4,-35,2,34,160,16,409,-33,-38,-78,-295,-14,0,23,-32,-24,-291,-14]],[[-733803,406670,24,-60,-4,-11,-46,31,26,10,-25,0]],[[-735552,406160,-160,63,34,61,67,5]],[[-734765,406328,41,-17,-97,-32,-71,11,-17,37,56,51,40,-48]],[[-735750,406149,-33,31,24,46,66,-44]],[[-735810,406188,-55,38,61,35,9,-22]],[[-735838,406115,-12,81,91,-78]],[[-734010,410621,20,-12,-33,-73,4,46,-44,19]],[[-723840,410718,80,-18,100,38,76,135,68,-1,-27,-4,16,-33,99,5,-54,110,83,32,60,91,125,-69,50,-121,85,-18,79,-47,0,-9,-32,5,-23,-78,-51,126,-130,21,33,-108,99,-86,-109,0,81,-23,-3,-31,135,58,0,-215,-100,63,-81,-27,10,-68,-41,-12,-56,1,14,27,-86,65,-38,-16,-6,5,-62,8,-59,-43,3,51,-43,10,25,37,-44,-2,36,54,-34,26,-83,8,-27,-52,88,-5,28,35,-40,-80,99,-140,98,39,3,0,-79,-49,-168,58,-90,48,2,80]],[[-732680,406421,173,-15,-165,-53,-160,42,-274,-3,4,-62,-128,11,-398,-73,-698,-171,0,25,155,70,28,-41,9,50,57,19,88,-27,-46,-21,106,28,-60,37,63,15,79,-34,19,59,197,10,15,21,-61,3,212,32,128,70,20,-22,86,75,-9,-20,56,-18,33,4,-73,36,105,-12,-21,-16,91,-33]],[[-734361,406088,-1397,-343,118,154,146,3,-28,17,94,50,320,47,1,40,92,36,10,44,29,-40,81,-18,-67,-16,-28,-24,83,25,-13,-28,-108,-42,99,-5,115,17,-1,51,193,66,224,25,17,-7,-49,0]],[[-732766,406253,209,4,314,62,296,112,27,-46,238,48,114,65,132,-4,911,199,410,130,214,125,7,-33,4,33,156,20,19,22,-42,15,91,-5,185,88,6,33,79,-4,115,62,27,-18,38,54,31,-9,-31,-20,12,-7,12,11,26,42,78,14,-18,-41,101,39,-16,-31,-1123,-425,-739,-206,-1613,-350,-571,-30,-102,61,145,21,-51,-43,95,50,50,-36]],[[-728939,407239,7,74,210,6,47,51,133,5,478,142,70,82,98,3,-42,29,149,5,-56,-53,174,85,126,22,-15,-53,-103,-40]],[[-739037,411786,181,0,-84,-70]]];
+
+
+const AIRLINES = {
+  DAL:['DL','Delta'], AAL:['AA','American'], UAL:['UA','United'], JBU:['B6','JetBlue'], SWA:['WN','Southwest'],
+  NKS:['NK','Spirit'], ASA:['AS','Alaska'], FFT:['F9','Frontier'], RPA:['YX','Republic'], EDV:['9E','Endeavor'],
+  ENY:['MQ','Envoy'], JIA:['OH','PSA'], SKW:['OO','SkyWest'], PDT:['PT','Piedmont'], GJS:['G7','GoJet'], ASH:['YV','Mesa'],
+  BAW:['BA','British Airways'], VIR:['VS','Virgin Atlantic'], AFR:['AF','Air France'], DLH:['LH','Lufthansa'], KLM:['KL','KLM'],
+  UAE:['EK','Emirates'], QTR:['QR','Qatar Airways'], ACA:['AC','Air Canada'], JZA:['QK','Jazz'], ELY:['LY','El Al'],
+  THY:['TK','Turkish Airlines'], IBE:['IB','Iberia'], ITY:['AZ','ITA Airways'], SWR:['LX','Swiss'], EIN:['EI','Aer Lingus'],
+  AMX:['AM','Aeroméxico'], AVA:['AV','Avianca'], CMP:['CM','Copa'], LAN:['LA','LATAM'], ICE:['FI','Icelandair'],
+  SAS:['SK','SAS'], FIN:['AY','Finnair'], KAL:['KE','Korean Air'], AAR:['OZ','Asiana'], JAL:['JL','Japan Airlines'],
+  ANA:['NH','ANA'], CPA:['CX','Cathay Pacific'], CCA:['CA','Air China'], EVA:['BR','EVA Air'], SIA:['SQ','Singapore Airlines'],
+  ETD:['EY','Etihad'], SVA:['SV','Saudia'], RAM:['AT','Royal Air Maroc'], ETH:['ET','Ethiopian'], TAP:['TP','TAP Air Portugal'],
+  AUA:['OS','Austrian'], LOT:['LO','LOT'], VOI:['Y4','Volaris'], WJA:['WS','WestJet'], FDX:['FX','FedEx'], UPS:['5X','UPS'],
+  EJA:['','NetJets'], LXJ:['','Flexjet'],
+};
+const CITY = { JFK:'New York', LGA:'New York', EWR:'Newark', TEB:'Teterboro', ATL:'Atlanta', BOS:'Boston', LAX:'Los Angeles',
+  SFO:'San Francisco', ORD:'Chicago', MIA:'Miami', DFW:'Dallas', DEN:'Denver', SEA:'Seattle', FLL:'Fort Lauderdale', MCO:'Orlando',
+  CLT:'Charlotte', DCA:'Washington', MSP:'Minneapolis', DTW:'Detroit', IAH:'Houston', LAS:'Las Vegas', PHX:'Phoenix', SJU:'San Juan',
+  RDU:'Raleigh', BNA:'Nashville', AUS:'Austin', PBI:'West Palm Beach', YYZ:'Toronto', YUL:'Montréal', LHR:'London', CDG:'Paris',
+  DXB:'Dubai', AMS:'Amsterdam', DOH:'Doha', FRA:'Frankfurt', LIS:'Lisbon', ASE:'Aspen' };
+const BEAR = { ATL:232, BOS:62, LAX:273, SFO:284, ORD:283, MIA:202, DFW:252, DEN:277, SEA:296, FLL:201, MCO:207, CLT:231,
+  DCA:226, MSP:292, DTW:286, IAH:245, LAS:275, PHX:266, SJU:157, RDU:222, BNA:248, AUS:251, PBI:199, YYZ:302, YUL:12,
+  LHR:51, CDG:54, DXB:40, AMS:48, DOH:42, FRA:56, LIS:70, ASE:278 };
+const DOMESTIC = ['ATL','BOS','LAX','SFO','ORD','MIA','DFW','DEN','SEA','FLL','MCO','CLT','DCA','MSP','DTW','IAH','LAS','PHX','SJU','RDU','BNA','AUS'];
+
+/* ---------- renderer & scene ---------- */
+const stage = $('stage');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+} catch (e) {
+  $('status').textContent = 'This browser can’t start WebGL, which the 3D view needs.';
+  return;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+stage.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 1.5; controls.maxDistance = 260;
+controls.screenSpacePanning = false;
+const HOME_T = new THREE.Vector3(-2, 0, -1);
+function homeCam() { const far = innerWidth / innerHeight < 0.8 ? 1.55 : 1; return new THREE.Vector3(10, 34, 46).multiplyScalar(far).add(HOME_T); }
+camera.position.copy(homeCam()); controls.target.copy(HOME_T);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-30, 60, 20); scene.add(sun);
+
+const C = {};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function readColors() { for (const k of ['water','land','shore','ink','muted','runway','ring','apt','arr','dep','thru','gnd','glide']) C[k] = new THREE.Color(css('--' + k) || '#888'); }
+readColors();
+const isDark = () => C.water.getHSL({}).l < 0.4;
+
+/* static ground */
+const M = {
+  water: new THREE.MeshBasicMaterial({ color: C.water }),
+  land: new THREE.MeshBasicMaterial({ color: C.land, side: THREE.DoubleSide }),
+  bay: new THREE.MeshBasicMaterial({ color: C.water, side: THREE.DoubleSide }),
+  shore: new THREE.LineBasicMaterial({ color: C.shore }),
+  runway: new THREE.MeshBasicMaterial({ color: C.runway }),
+  aptRing: new THREE.MeshBasicMaterial({ color: C.apt, side: THREE.DoubleSide }),
+  ring: new THREE.LineBasicMaterial({ color: C.ring, transparent: true, opacity: 0.45 }),
+  drop: new THREE.LineBasicMaterial({ color: C.muted, transparent: true, opacity: 0.28 }),
+  sel: new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
+};
+scene.fog = new THREE.Fog(C.water, 150, 420);
+scene.background = C.water;
+
+const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), M.water);
+waterMesh.position.y = -0.02; scene.add(waterMesh);
+const shapeOf = poly => new THREE.Shape(poly.map(([la, lo]) => { const p = toXZ(la, lo); return new THREE.Vector2(p.x, -p.z); }));
+const flatGeo = (geo, y) => { geo.rotateX(-Math.PI / 2); geo.translate(0, y, 0); return geo; };
+const decodeRing = d => { const out = []; let x = 0, y = 0; for (let i = 0; i < d.length; i += 2) { x += d[i]; y += d[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; };
+{
+  const shorePts = [];
+  for (const poly of LAND_ENC) {
+    const rings = poly.map(decodeRing);
+    const shape = shapeOf(rings[0]);
+    for (const h of rings.slice(1)) shape.holes.push(new THREE.Path(h.map(([la, lo]) => { const p = toXZ(la, lo); return new THREE.Vector2(p.x, -p.z); })));
+    scene.add(new THREE.Mesh(flatGeo(new THREE.ShapeGeometry(shape), 0), M.land));
+    for (const r of rings) for (let i = 0; i < r.length; i++) {
+      const a = toXZ(r[i][0], r[i][1]), b = toXZ(r[(i + 1) % r.length][0], r[(i + 1) % r.length][1]);
+      shorePts.push(a.x, 0.003, a.z, b.x, 0.003, b.z);
+    }
+  }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(shorePts, 3));
+  scene.add(new THREE.LineSegments(sg, M.shore));
+}
+
+/* ---------- instrument approaches: FAA CIFP cycle 2611 (Oct 29 - Nov 26, 2026) ---------- */
+// One entry per published approach at JFK, LGA and EWR. p: lateral path from 15 nm out to the
+// landing threshold (fixes and RF arcs from the FAA's coded data, extended back through the
+// straightest transition). gpa: glide path angle in degrees (glideslope for ILS, vertical path
+// angle otherwise; the Canarsie VOR approach publishes none, so it is drawn at 3 degrees).
+// tch: threshold crossing height in feet; el: threshold elevation in feet.
+const APPROACHES = (window.APPROACHES_DATA || []).map(a => ({ ...a }));
+const APR_PRIO = { I: 0, H: 1, R: 2, L: 3, S: 4 };
+const THR = {};
+for (const ap of APPROACHES) {
+  ap.rk = ap.a + ' ' + ap.rwy;
+  ap.xz = ap.p.map(([la, lo]) => toXZ(la, lo));
+  const n = ap.xz.length; ap.s = new Array(n).fill(0);
+  for (let i = n - 2; i >= 0; i--) ap.s[i] = ap.s[i + 1] + Math.hypot(ap.xz[i + 1].x - ap.xz[i].x, ap.xz[i + 1].z - ap.xz[i].z);
+  ap.score = 0; ap.vis = null;
+  THR[ap.rk] = ap.xz[n - 1];
+}
+// Where a coded path meets the runway at an angle (JFK's offset ILS 13L, the visual segment of the
+// Canarsie), aircraft turn onto the centerline. Replace that last leg with a smooth turn that
+// lines up 0.8 nm out, so the drawn path curves the way the arrivals do.
+const oppRwy = r => { const m = /^(\d+)([LRC]?)$/.exec(r); return String((+m[1] + 18) % 36 || 36) + ({ L: 'R', R: 'L', C: 'C' }[m[2]] || ''); };
+function measure(ap) { const n = ap.xz.length; ap.s = new Array(n).fill(0); for (let i = n - 2; i >= 0; i--) ap.s[i] = ap.s[i + 1] + Math.hypot(ap.xz[i + 1].x - ap.xz[i].x, ap.xz[i + 1].z - ap.xz[i].z); }
+for (const ap of APPROACHES) {
+  const T = THR[ap.rk], O = THR[ap.a + ' ' + oppRwy(ap.rwy)]; if (!O) continue;
+  const uL = Math.hypot(O.x - T.x, O.z - T.z), u = { x: (O.x - T.x) / uL, z: (O.z - T.z) / uL }; ap.u = u;
+  const n = ap.xz.length, P = ap.xz[n - 2], dL = Math.hypot(T.x - P.x, T.z - P.z), d = { x: (T.x - P.x) / dL, z: (T.z - P.z) / dL };
+  if (Math.acos(clamp(d.x * u.x + d.z * u.z, -1, 1)) < 8 * D2R || dL < 1.2) continue;
+  const F = { x: T.x - u.x * 0.8, z: T.z - u.z * 0.8 }, w = { x: F.x - P.x, z: F.z - P.z }, det = d.x * u.z - d.z * u.x;
+  let C = { x: F.x - u.x * 1.2, z: F.z - u.z * 1.2 };
+  if (Math.abs(det) > 1e-6) { // where the inbound leg meets the extended centerline
+    const t = (w.x * u.z - w.z * u.x) / det, k = (d.x * w.z - d.z * w.x) / det;
+    if (t > 0 && k > 0.2 && k < 4) C = { x: P.x + d.x * t, z: P.z + d.z * t };
+  }
+  const curve = [];
+  for (let i = 1; i <= 14; i++) { const q = i / 14, a = (1 - q) * (1 - q), b = 2 * (1 - q) * q, c = q * q; curve.push({ x: a * P.x + b * C.x + c * F.x, z: a * P.z + b * C.z + c * F.z }); }
+  ap.xz = ap.xz.slice(0, n - 1).concat(curve, [T]); measure(ap);
+}
+
+const tagLayer = $('tags');
+const staticLabels = [];
+for (const r of [10, 20, 30, 40]) {
+  const pts = []; for (let i = 0; i < 128; i++) { const a = i / 128 * Math.PI * 2; pts.push(new THREE.Vector3(Math.sin(a) * r, 0.004, -Math.cos(a) * r)); }
+  scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), M.ring));
+  const el = document.createElement('div'); el.className = 'ringlbl'; el.textContent = r + ' nm'; tagLayer.appendChild(el);
+  staticLabels.push({ el, p: new THREE.Vector3(0, 0, -r), shift: 'translate(-50%,-120%)' });
+}
+for (const a of AIRPORTS) {
+  const c = toXZ(a.ll[0], a.ll[1]);
+  const r = a.major ? 1.15 : 0.55;
+  const ring = new THREE.Mesh(flatGeo(new THREE.RingGeometry(r - 0.07, r, 48), 0.006), M.aptRing);
+  ring.position.x = c.x; ring.position.z = c.z; scene.add(ring);
+  for (const [name, [A, B]] of Object.entries(a.rwys)) {
+    const [d1, d2] = name.split('/'), t1 = THR[a.code + ' ' + d1], t2 = THR[a.code + ' ' + d2];
+    const p = t1 || toXZ(A[0], A[1]), q = t2 || toXZ(B[0], B[1]);
+    const dx = q.x - p.x, dz = q.z - p.z, L = Math.hypot(dx, dz);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.006, L), M.runway);
+    m.position.set((p.x + q.x) / 2, 0.006, (p.z + q.z) / 2); m.rotation.y = Math.atan2(dx, dz); scene.add(m);
+  }
+  const el = document.createElement('div'); el.className = 'apt';
+  el.innerHTML = `${a.code}<span>${esc(a.name)}</span>`; tagLayer.appendChild(el);
+  staticLabels.push({ el, p: new THREE.Vector3(c.x, 0, c.z), shift: `translate(-50%, ${a.major ? 18 : 10}px)` });
+}
+
+/* ---------- active approaches ---------- */
+// Each arrival below 6,000 ft that isn't climbing votes, at most every 10 s, for the published
+// approach whose lateral path it is flying: within 0.5 nm (wider further out), heading within
+// 30 degrees of the path, and not far above the glide path. Where approaches share a final (ILS
+// and RNAV to one runway) the ILS wins the tie. Votes decay with an 8-minute half-life. A runway
+// counts as in use after about two arrivals' worth of votes, and its top-voted approach is drawn.
+const altAt = (ap, s) => (ap.el + ap.tch) / FT_PER_NM + Math.tan(ap.gpa * D2R) * s; // nm, like the aircraft
+function projectOn(ap, x, z) {
+  let best = null;
+  for (let i = 0; i < ap.xz.length - 1; i++) {
+    const a = ap.xz[i], b = ap.xz[i + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-9;
+    const f = clamp(((x - a.x) * dx + (z - a.z) * dz) / L2, 0, 1);
+    const d = Math.hypot(x - (a.x + dx * f), z - (a.z + dz * f));
+    if (!best || d < best.lat) best = { lat: d, s: ap.s[i] - f * (ap.s[i] - ap.s[i + 1]), hdg: Math.atan2(dx, -dz), end: (i === 0 && f === 0) };
+  }
+  return best;
+}
+const glideGroup = new THREE.Group(); scene.add(glideGroup); // scale.y follows altitude exaggeration
+const GM = {
+  curtain: new THREE.MeshBasicMaterial({ color: C.glide, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false }),
+  path: new THREE.MeshBasicMaterial({ color: C.glide, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }),
+  tick: new THREE.LineBasicMaterial({ color: C.glide, transparent: true, opacity: 0.35 }),
+  center: new THREE.LineDashedMaterial({ color: C.glide, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.75 }),
+};
+const gv = new THREE.Vector3();
+function samplePath(ap, step) { // points every `step` nm from the threshold out to 15 nm
+  const out = [], n = ap.xz.length;
+  for (let s = 0; s <= ap.s[0] + 1e-6; s += step) {
+    let i = n - 2; while (i > 0 && ap.s[i] < s) i--;
+    const a = ap.xz[i], b = ap.xz[i + 1], seg = ap.s[i] - ap.s[i + 1] || 1e-9, f = (ap.s[i] - s) / seg;
+    out.push({ x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f, s });
+  }
+  return out;
+}
+const aprLabel = ap => ap.nick ? `${ap.nick} (${ap.name})` : ap.name;
+
+/* Paths as flown. When an arrival lands (drops out low, lined up with a runway near its threshold),
+   its last positions are kept as a track measured back from the threshold. With two or more
+   tracks from the last 30 minutes, the drawn path is their average, so vectors, visual approaches
+   and the river and parkway turns show up as they are being flown. Past the distance the tracks
+   cover, the published path takes over. */
+const TRACKS = {}, landVotes = {};
+function recordLanding(c, now) {
+  const h = c.hist; if (!h || h.length < 6) return;
+  const last = h[h.length - 1];
+  let j = h.length - 1; while (j > 0 && Math.hypot(h[j].x - last.x, h[j].z - last.z) < 0.8) j--;
+  const hx = last.x - h[j].x, hz = last.z - h[j].z, hl = Math.hypot(hx, hz); if (hl < 0.3) return;
+  let best = null;
+  for (const ap of APPROACHES) {
+    if (!ap.u || (best && best.rk === ap.rk)) continue;
+    const T = THR[ap.rk], d = Math.hypot(last.x - T.x, last.z - T.z);
+    if (d > 2 || (hx * ap.u.x + hz * ap.u.z) / hl < Math.cos(35 * D2R)) continue;
+    if (!best || d < best.d) best = { rk: ap.rk, d, T };
+  }
+  if (!best) return;
+  const pts = [{ x: best.T.x, z: best.T.z, s: 0 }]; let s = 0, prev = best.T;
+  for (let i = h.length - 1; i >= 0 && s < 16; i--) {
+    const q = h[i], step = Math.hypot(q.x - prev.x, q.z - prev.z);
+    if (step < 0.05) continue;
+    s += step; pts.push({ x: q.x, z: q.z, s }); prev = q;
+  }
+  if (s < 5) return;
+  const list = TRACKS[best.rk] || (TRACKS[best.rk] = []);
+  list.push({ t: now, pts }); while (list.length > 6) list.shift();
+  landVotes[best.rk] = (landVotes[best.rk] || 0) + 1;
+  c.hist = null;
+}
+function atS(pts, s) {
+  for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1].s >= s) {
+    const a = pts[i], b = pts[i + 1], f = (s - a.s) / ((b.s - a.s) || 1e-9);
+    return { x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f };
+  }
+  return null;
+}
+function flownPath(rk, now) {
+  const list = (TRACKS[rk] || []).filter(tr => now - tr.t < 30 * 60000);
+  if (list.length < 2) return null;
+  const out = [];
+  for (let s = 0; s <= 15 + 1e-6; s += 0.25) {
+    let x = 0, z = 0, k = 0;
+    for (const tr of list) { const q = atS(tr.pts, s); if (q) { x += q.x; z += q.z; k++; } }
+    if (k < 2) break;
+    out.push({ x: x / k, z: z / k, s });
+  }
+  if (out.length < 17) return null; // under 4 nm in common
+  const sm = out.map((q, i) => { // light smoothing, keeping the threshold fixed
+    if (i === 0) return q;
+    let x = 0, z = 0, n = 0;
+    for (let m = Math.max(1, i - 2); m <= Math.min(out.length - 1, i + 2); m++) { x += out[m].x; z += out[m].z; n++; }
+    return { x: x / n, z: z / n, s: q.s };
+  });
+  return { pts: sm, n: list.length, sig: list[list.length - 1].t };
+}
+function lineFor(ap, fp) {
+  const pub = samplePath(ap, 0.25);
+  if (!fp) return pub;
+  const line = fp.pts.slice(), end = line[line.length - 1], cov = end.s, join = pub.find(q => q.s >= cov);
+  if (join) { // carry on along the published path, easing out the gap over 3 nm
+    const ox = end.x - join.x, oz = end.z - join.z;
+    for (const q of pub) if (q.s > cov + 0.01) { const f = Math.max(0, 1 - (q.s - cov) / 3); line.push({ x: q.x + ox * f, z: q.z + oz * f }); }
+  }
+  return line;
+}
+function buildGlide(line, ap, title, note) {
+  // height comes from distance flown along the path, so a curved approach descends along its curve
+  let acc = 0;
+  const pts = line.map((q, i) => { if (i) acc += Math.hypot(q.x - line[i - 1].x, q.z - line[i - 1].z); return { x: q.x, z: q.z, s: acc, y: altAt(ap, acc) }; })
+    .filter(q => q.s <= 15.05);
+  const g = new THREE.Group(), n = pts.length;
+  const geo = arr => new THREE.BufferGeometry().setFromPoints(arr);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const cur = [], ci = [];
+  pts.forEach(q => cur.push(V(q.x, q.y, q.z), V(q.x, 0, q.z)));
+  for (let i = 0; i < n - 1; i++) { const k = i * 2; ci.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  const cg = geo(cur); cg.setIndex(ci); g.add(new THREE.Mesh(cg, GM.curtain));
+  const rib = [], ri = [], w = 0.05;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1;
+    const px = -dz / L * w, pz = dx / L * w, q = pts[i];
+    rib.push(V(q.x + px, q.y, q.z + pz), V(q.x - px, q.y, q.z - pz));
+    if (i < n - 1) { const k = i * 2; ri.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  }
+  const rg = geo(rib); rg.setIndex(ri); g.add(new THREE.Mesh(rg, GM.path));
+  const ticks = []; // a stalk every 2 nm along the path
+  for (let i = 1; i < n; i++) if (Math.floor(pts[i].s / 2) > Math.floor(pts[i - 1].s / 2)) ticks.push(V(pts[i].x, 0, pts[i].z), V(pts[i].x, pts[i].y, pts[i].z));
+  g.add(new THREE.LineSegments(geo(ticks), GM.tick));
+  const cl = new THREE.Line(geo(pts.map(q => V(q.x, 0.01, q.z))), GM.center); cl.computeLineDistances(); g.add(cl);
+  glideGroup.add(g);
+  const el = document.createElement('div'); el.className = 'glbl';
+  el.innerHTML = `<b>${esc(ap.a)} ${esc(ap.rwy)}</b>${esc(title)}<br>${ap.gpa.toFixed(2)}° · ${esc(note)}`;
+  tagLayer.appendChild(el);
+  const top = pts[n - 1];
+  return { g, el, top: { x: top.x, y: top.y, z: top.z }, state: { vis: true } };
+}
+const SHOWN = {};
+function dropShown(rk) {
+  const v = SHOWN[rk]; if (!v) return;
+  glideGroup.remove(v.g); v.g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); v.el.remove();
+  delete SHOWN[rk];
+}
+let lastScoreT = 0;
+const rwyActive = {};
+function scoreRunways(now) {
+  if (cfg.source === 'cloud') return; // the poller does this for everyone
+  const dtMin = lastScoreT ? (now - lastScoreT) / 60000 : 0; lastScoreT = now;
+  const decay = Math.pow(0.5, dtMin / 8);
+  for (const ap of APPROACHES) ap.score *= decay;
+  for (const k of Object.keys(landVotes)) landVotes[k] *= decay;
+  for (const c of crafts.values()) {
+    const r = c.rec;
+    if (!r || !c.fix || c.dying || r.ground || (r.altFt || 0) > 6000 || (r.vr || 0) > 300) continue;
+    if (c.lastVote && now - c.lastVote < 10000) continue;
+    const altNm = (r.altFt || 0) / FT_PER_NM;
+    let best = null;
+    for (const ap of APPROACHES) {
+      const pr = projectOn(ap, c.fix.x, c.fix.z);
+      if (pr.end || pr.s < 0.3) continue;
+      if (pr.lat > Math.max(0.5, pr.s * 0.06)) continue;
+      if (Math.abs(angDiff((r.track || 0) * D2R, pr.hdg)) > 30 * D2R) continue;
+      if (altNm > altAt(ap, pr.s) + 1500 / FT_PER_NM) continue;
+      const better = !best || pr.lat < best.lat - 0.12 || (Math.abs(pr.lat - best.lat) <= 0.12 && APR_PRIO[ap.t] < APR_PRIO[best.ap.t]);
+      if (better) best = { ap, lat: pr.lat };
+    }
+    if (best) { best.ap.score += 1; c.lastVote = now; }
+  }
+  updateActive();
+}
+let serverWant = {};
+function applyServerActive(list) {
+  const want = {};
+  for (const it of list) {
+    const ap = APPROACHES.find(x => x.a === it.a && x.id === it.id); if (!ap) continue;
+    let fp = null;
+    if (it.flown && it.flown.length > 1) {
+      let acc = 0;
+      const pts = it.flown.map(([x, z], i, arr) => { if (i) acc += Math.hypot(x - arr[i - 1][0], z - arr[i - 1][1]); return { x, z, s: acc }; });
+      fp = { pts, n: it.n, sig: it.sig };
+    }
+    want[ap.rk] = { ap, fp, visual: it.visual, title: it.title, sig: it.sig };
+  }
+  serverWant = want;
+  applyWant(want);
+}
+function updateActive() {
+  if (cfg.source === 'cloud') return applyWant(serverWant);
+  const now = performance.now(), rw = {}, top = {};
+  for (const ap of APPROACHES) {
+    const g = rw[ap.rk] || (rw[ap.rk] = { a: ap.a, rwy: ap.rwy, sum: 0, best: null, prio: null });
+    g.sum += ap.score;
+    if (!g.best || ap.score > g.best.score + 0.01 || (Math.abs(ap.score - g.best.score) <= 0.01 && APR_PRIO[ap.t] < APR_PRIO[g.best.t])) g.best = ap;
+    if (!g.prio || APR_PRIO[ap.t] < APR_PRIO[g.prio.t]) g.prio = ap;
+  }
+  for (const [rk, g] of Object.entries(rw)) { g.land = landVotes[rk] || 0; g.total = g.sum + g.land; top[g.a] = Math.max(top[g.a] || 0, g.total); }
+  const want = {};
+  for (const [rk, g] of Object.entries(rw)) {
+    rwyActive[rk] = rwyActive[rk] ? g.total >= 0.8 : (g.total >= 2 && g.total >= top[g.a] * 0.3);
+    if (!rwyActive[rk]) continue;
+    // landings that matched no published path: a visual approach, named as such
+    const visual = g.land >= 2 && g.sum < g.land * 0.35;
+    const ap = visual || g.sum < 0.5 ? g.prio : g.best, fp = flownPath(rk, now);
+    want[rk] = { ap, fp, visual, title: visual ? `Visual approach RWY ${g.rwy}` : aprLabel(ap),
+      sig: (visual ? 'V' : ap.id) + '|' + (fp ? fp.sig : 'pub') };
+  }
+  applyWant(want);
+}
+function applyWant(want) {
+  for (const rk of Object.keys(SHOWN)) if (!cfg.glide || !want[rk] || want[rk].sig !== SHOWN[rk].sig) dropShown(rk);
+  if (cfg.glide) for (const [rk, wv] of Object.entries(want)) if (!SHOWN[rk]) {
+    const note = wv.fp ? `path flown by the last ${wv.fp.n} arrivals` : 'published path';
+    SHOWN[rk] = Object.assign(buildGlide(lineFor(wv.ap, wv.fp), wv.ap, wv.title, note), { sig: wv.sig });
+  }
+  renderRwys(want);
+}
+function renderRwys(want) {
+  const el = $('rwys');
+  if (!cfg.glide) { el.hidden = true; return; }
+  const by = {};
+  for (const [rk, wv] of Object.entries(want || {})) (by[wv.ap.a] = by[wv.ap.a] || []).push(wv);
+  el.hidden = false;
+  const rows = ['JFK', 'LGA', 'EWR'].filter(a => by[a]).map(a =>
+    `<div><b>${a}</b> ${by[a].sort((x, y) => x.ap.rwy.localeCompare(y.ap.rwy)).map(wv => esc(wv.title) + (wv.fp ? ' <span class="fl">as flown</span>' : '')).join(' &amp; ')}</div>`);
+  el.innerHTML = rows.length ? rows.join('') : 'Watching arrivals to find the active approaches…';
+}
+
+/* ---------- aircraft visuals ---------- */
+const PHASES = ['arr', 'dep', 'thru', 'gnd'];
+const MODEL_MATS = {}, TRAIL_MATS = {};
+const trailVS = `attribute float aT; attribute float aSide; varying float vT; varying float vS;
+void main(){ vT = aT; vS = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const trailFS = `uniform vec3 uColor; uniform float uNow; uniform float uSpan; uniform float uOpacity; varying float vT; varying float vS;
+void main(){
+  float fresh = clamp(1.0 - (uNow - vT) / uSpan, 0.0, 1.0);
+  float edge = 1.0 - smoothstep(0.05, 1.0, abs(vS));
+  float a = pow(fresh, 1.6) * edge * uOpacity;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(uColor, a);
+}`;
+for (const p of PHASES) {
+  MODEL_MATS[p] = new THREE.MeshLambertMaterial({ color: C[p], emissive: C[p].clone().multiplyScalar(0.25), side: THREE.DoubleSide });
+  TRAIL_MATS[p] = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: C[p].clone() }, uNow: { value: 0 }, uSpan: { value: 240 }, uOpacity: { value: 0.5 } },
+    vertexShader: trailVS, fragmentShader: trailFS, transparent: true, depthWrite: false, side: THREE.DoubleSide
+  });
+}
+function flatShape(pairs) { return new THREE.Shape(pairs.map(([x, z]) => new THREE.Vector2(x, -z))); }
+const GEO = {
+  fus: new THREE.CylinderGeometry(0.03, 0.046, 0.72, 10).rotateX(Math.PI / 2),
+  nose: new THREE.SphereGeometry(0.046, 10, 8).scale(1, 1, 1.7).translate(0, 0, -0.36),
+  wing: new THREE.ShapeGeometry(flatShape([[-0.42,0.14],[-0.42,0.09],[0,-0.08],[0.42,0.09],[0.42,0.14],[0,0.06]])).rotateX(-Math.PI / 2).translate(0, -0.012, 0),
+  tail: new THREE.ShapeGeometry(flatShape([[-0.15,0.37],[-0.15,0.33],[0,0.25],[0.15,0.33],[0.15,0.37],[0,0.33]])).rotateX(-Math.PI / 2).translate(0, 0.01, 0),
+  fin: new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0.22,0), new THREE.Vector2(0.37,0), new THREE.Vector2(0.38,0.15), new THREE.Vector2(0.32,0.15)])).rotateY(-Math.PI / 2),
+  hit: new THREE.SphereGeometry(0.6, 8, 6),
+};
+const HIT_MAT = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
+const MAXP = 320;
+const TRAIL_INDEX = (() => {
+  const idx = new Uint16Array((MAXP - 1) * 12);
+  for (let i = 0; i < MAXP - 1; i++) {
+    const b = i * 4, n = b + 4, o = i * 12;
+    idx.set([b, b + 1, n, b + 1, n + 1, n, b + 2, b + 3, n + 2, b + 3, n + 3, n + 2], o);
+  }
+  return idx;
+})();
+const TRAIL_W = 0.22, TRAIL_WV = 0.15;
+
+const crafts = new Map();
+let sel = null, following = false;
+const hitList = [];
+const selRing = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.8, 40).rotateX(-Math.PI / 2), M.sel);
+selRing.visible = false; scene.add(selRing);
+
+class Craft {
+  constructor(hex) {
+    this.hex = hex; this.rec = null; this.phase = 'thru';
+    this.model = new THREE.Group(); this.model.rotation.order = 'YXZ';
+    this.parts = ['fus', 'nose', 'wing', 'tail', 'fin'].map(k => { const m = new THREE.Mesh(GEO[k], MODEL_MATS.thru); this.model.add(m); return m; });
+    this.hit = new THREE.Mesh(GEO.hit, HIT_MAT); this.hit.userData.craft = this; this.model.add(this.hit); hitList.push(this.hit);
+    scene.add(this.model);
+
+    const g = new THREE.BufferGeometry();
+    this.tPos = new Float32Array(MAXP * 12); this.tT = new Float32Array(MAXP * 4);
+    const side = new Float32Array(MAXP * 4); for (let i = 0; i < MAXP; i++) side.set([-1, 1, -1, 1], i * 4);
+    this.aPos = new THREE.BufferAttribute(this.tPos, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aT = new THREE.BufferAttribute(this.tT, 1).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', this.aPos); g.setAttribute('aT', this.aT); g.setAttribute('aSide', new THREE.BufferAttribute(side, 1));
+    g.setIndex(new THREE.BufferAttribute(TRAIL_INDEX, 1)); // own index per trail: disposing a shared one breaks the others g.setDrawRange(0, 0);
+    this.trailGeo = g; this.trail = new THREE.Mesh(g, TRAIL_MATS.thru); this.trail.frustumCulled = false; scene.add(this.trail);
+    this.pts = []; this.full = true; this.head = null;
+
+    this.dropPos = new Float32Array(6);
+    this.dropGeo = new THREE.BufferGeometry(); this.dropGeo.setAttribute('position', new THREE.BufferAttribute(this.dropPos, 3));
+    this.drop = new THREE.Line(this.dropGeo, M.drop); this.drop.frustumCulled = false; scene.add(this.drop);
+
+    this.tag = document.createElement('div'); this.tag.className = 'tag';
+    this.blk = document.createElement('div'); this.blk.className = 'blk'; this.tag.appendChild(this.blk);
+    tagLayer.appendChild(this.tag); this.tagHTML = ''; this.tagCls = ''; this.tagShown = true;
+
+    this.pos = new THREE.Vector3(); this.alt = 0; this.hdg = 0; this.turn = 0; this.pitch = 0;
+    this.init = false; this.lastSeen = 0; this.fix = null; this.dying = false; this.hidden = false; this.scale = 1;
+  }
+  target(now) {
+    const f = this.fix, dt = clamp((now - f.t) / 1000, 0, 30);
+    return { x: f.x + f.vx * dt, z: f.z + f.vz * dt, a: Math.max(0, f.a + f.va * Math.min(dt, 12)) };
+  }
+  update(r, now) {
+    this.rec = r;
+    if (this.dying) { this.dying = false; this.model.visible = true; }
+    const p = toXZ(r.lat, r.lon), k = r.scale || 1;
+    const v = (r.gs || 0) / 3600 * k, tr = (r.track || 0) * D2R;
+    this.fix = { x: p.x, z: p.z, a: (r.ground ? 0 : Math.max(0, r.altFt || 0)) / FT_PER_NM, t: now - clamp(r.seen || 0, 0, 20) * 1000,
+      vx: Math.sin(tr) * v, vz: -Math.cos(tr) * v, va: r.ground ? 0 : (r.vr || 0) / 60 / FT_PER_NM * k };
+    this.lastSeen = now;
+    if (!r.ground && (r.altFt || 0) < 9000) { // positions below 9,000 ft, for learning the paths arrivals fly
+      const h = this.hist || (this.hist = []), L = h[h.length - 1];
+      if (!L || Math.hypot(p.x - L.x, p.z - L.z) > 0.12) { h.push({ x: p.x, z: p.z }); if (h.length > 400) h.shift(); }
+    }
+    const tg = this.target(now);
+    if (!this.init || Math.hypot(tg.x - this.pos.x, tg.z - this.pos.z) > 4) {
+      if (this.init) { this.pts.length = 0; this.full = true; }
+      this.pos.set(tg.x, 0, tg.z); this.alt = tg.a; this.hdg = tr; this.init = true;
+    }
+    this.setPhase(); this.renderTag();
+  }
+  seedTrail(seed, tSec) {
+    for (let i = seed.length - 1; i >= 0; i--) { const s = seed[i]; this.pts.push({ x: s.x, z: s.z, a: s.ft / FT_PER_NM, t: tSec - s.age }); }
+    this.full = true;
+  }
+  setPhase() {
+    const r = this.rec, rt = routeFor(r.cs);
+    let ph = 'thru';
+    if (r.ground) ph = 'gnd';
+    else if (rt) {
+      const o = LOCAL.has(normCode(rt.orig)), d = LOCAL.has(normCode(rt.dest));
+      if (d && !o) ph = 'arr'; else if (o && !d) ph = 'dep'; else if (o && d) ph = (r.vr || 0) < 0 ? 'arr' : 'dep';
+    } else if ((r.altFt || 0) < 12000) {
+      if ((r.vr || 0) < -400) ph = 'arr'; else if ((r.vr || 0) > 400) ph = 'dep';
+    }
+    if (ph !== this.phase) {
+      this.phase = ph;
+      for (const m of this.parts) m.material = MODEL_MATS[ph];
+      this.trail.material = TRAIL_MATS[ph];
+    }
+  }
+  renderTag() {
+    const r = this.rec; if (!r) return;
+    const rt = routeFor(r.cs), pending = routes.get(r.cs)?.pending;
+    const isSel = sel === this, mode = isSel ? 'full' : cfg.tags;
+    let h = `<b>${esc(flightNo(r.cs, rt) || r.reg || r.hex.toUpperCase())}</b>`;
+    if (mode === 'full') {
+      if (r.type) h += ` <span class="d">${esc(r.type)}</span>`;
+      h += '<br>' + (rt ? `${esc(rt.orig || '?')} → ${esc(rt.dest || '?')}` : `<span class="d">${pending ? 'Finding route…' : 'Route unknown'}</span>`);
+      h += `<br><span class="d">${altBlock(r)}</span>`;
+    }
+    const cls = 'tag ' + this.phase + (isSel ? ' sel' : '');
+    if (h !== this.tagHTML) { this.blk.innerHTML = h; this.tagHTML = h; }
+    if (cls !== this.tagCls) { this.tag.className = cls; this.tagCls = cls; }
+  }
+  die(tSec) {
+    if (this.dying) return;
+    if (this.rec && (this.rec.ground || ((this.rec.altFt || 0) < 1500 && (this.rec.vr || 0) <= 0))) recordLanding(this, performance.now());
+    this.dying = true; this.diedAt = tSec; this.model.visible = false; this.drop.visible = false; this.showTag(false);
+    if (sel === this) select(null);
+  }
+  dispose() {
+    scene.remove(this.model, this.trail, this.drop);
+    this.trailGeo.dispose(); this.dropGeo.dispose(); this.tag.remove();
+    const i = hitList.indexOf(this.hit); if (i >= 0) hitList.splice(i, 1);
+  }
+  showTag(on) { if (on !== this.tagShown) { this.tag.style.display = on ? '' : 'none'; this.tagShown = on; } }
+  tick(dt, now, tSec) {
+    if (this.dying || !this.fix) return;
+    const r = this.rec;
+    const hide = cfg.ceiling < 45000 && !r.ground && (r.altFt || 0) > cfg.ceiling;
+    if (hide !== this.hidden) { this.hidden = hide; this.model.visible = !hide; this.trail.visible = !hide; this.drop.visible = !hide; if (hide && sel === this) select(null); }
+    const tg = this.target(now), k = 1 - Math.exp(-dt * 2.2);
+    this.pos.x += (tg.x - this.pos.x) * k; this.pos.z += (tg.z - this.pos.z) * k; this.alt += (tg.a - this.alt) * k;
+    const want = (r.track || 0) * D2R, step = angDiff(want, this.hdg) * Math.min(1, dt * 2);
+    this.hdg += step; this.turn += ((dt > 0 ? step / dt : 0) - this.turn) * Math.min(1, dt * 3);
+    const y = this.alt * cfg.exag;
+    this.model.position.set(this.pos.x, y, this.pos.z);
+    const gsFtS = Math.max(60, (r.gs || 0) * 1.688), vsFtS = (r.ground ? 0 : (r.vr || 0)) / 60;
+    this.pitch += (clamp(Math.atan2(vsFtS * cfg.exag, gsFtS), -0.35, 0.35) - this.pitch) * Math.min(1, dt * 2);
+    this.model.rotation.set(this.pitch, -this.hdg, -clamp(this.turn * 6, -0.5, 0.5));
+    this.scale = clamp(camera.position.distanceTo(this.model.position) * 0.022, 0.3, 2.6);
+    this.model.scale.setScalar(this.scale);
+
+    // trail
+    this.head = { x: this.pos.x, z: this.pos.z, a: this.alt, t: tSec };
+    const last = this.pts[this.pts.length - 1];
+    if (!last || Math.hypot(this.head.x - last.x, this.head.z - last.z, (this.head.a - last.a) * cfg.exag) > 0.06 || tSec - last.t > 4) {
+      this.pts.push({ ...this.head });
+      if (this.pts.length > MAXP - 1) { this.pts.shift(); this.full = true; }
+      this.pushed = true;
+    }
+    const span = cfg.trailMin * 60;
+    while (this.pts.length && tSec - this.pts[0].t > span) { this.pts.shift(); this.full = true; }
+    this.writeTrail();
+
+    this.dropPos[0] = this.pos.x; this.dropPos[1] = 0; this.dropPos[2] = this.pos.z;
+    this.dropPos[3] = this.pos.x; this.dropPos[4] = y; this.dropPos[5] = this.pos.z;
+    this.dropGeo.attributes.position.needsUpdate = true;
+    this.drop.visible = !hide && y > 0.05;
+  }
+  writeTrail() {
+    const pts = this.pts, n = pts.length, total = n + (this.head ? 1 : 0);
+    if (total < 2) { this.trailGeo.setDrawRange(0, 0); return; }
+    const P = i => (i < n ? pts[i] : this.head), ex = cfg.exag, pos = this.tPos, T = this.tT;
+    const start = this.full ? 0 : Math.max(0, n - (this.pushed ? 2 : 1));
+    for (let i = start; i < total; i++) {
+      const p = P(i), pa = P(Math.max(0, i - 1)), pb = P(Math.min(total - 1, i + 1));
+      let dx = pb.x - pa.x, dz = pb.z - pa.z, L = Math.hypot(dx, dz);
+      if (L < 1e-6) { dx = Math.sin(this.hdg); dz = -Math.cos(this.hdg); L = 1; }
+      const px = -dz / L * TRAIL_W, pz = dx / L * TRAIL_W, y = p.a * ex, o = i * 12;
+      pos[o] = p.x + px; pos[o + 1] = y; pos[o + 2] = p.z + pz;
+      pos[o + 3] = p.x - px; pos[o + 4] = y; pos[o + 5] = p.z - pz;
+      pos[o + 6] = p.x; pos[o + 7] = y + TRAIL_WV; pos[o + 8] = p.z;
+      pos[o + 9] = p.x; pos[o + 10] = y - TRAIL_WV; pos[o + 11] = p.z;
+      const t4 = i * 4; T[t4] = T[t4 + 1] = T[t4 + 2] = T[t4 + 3] = p.t;
+    }
+    if (this.full) { this.aPos.updateRange.count = -1; this.aT.updateRange.count = -1; }
+    else {
+      this.aPos.updateRange.offset = start * 12; this.aPos.updateRange.count = (total - start) * 12;
+      this.aT.updateRange.offset = start * 4; this.aT.updateRange.count = (total - start) * 4;
+    }
+    this.aPos.needsUpdate = true; this.aT.needsUpdate = true;
+    this.trailGeo.setDrawRange(0, (total - 1) * 12);
+    this.full = false; this.pushed = false;
+  }
+}
+
+function altBlock(r) {
+  const gs = Math.round(r.gs || 0);
+  if (r.ground) return `GND  ${gs} kt`;
+  const fl = String(Math.max(0, Math.round((r.altFt || 0) / 100))).padStart(3, '0');
+  const arrow = (r.vr || 0) > 300 ? '↑' : (r.vr || 0) < -300 ? '↓' : '·';
+  return `${fl} ${arrow} ${gs} kt`;
+}
+function flightNo(cs, rt) {
+  const m = /^([A-Z]{3})0*(\d{1,4}[A-Z]{0,2})$/.exec(cs || '');
+  if (!m) return cs || '';
+  const iata = (rt && rt.airlineIata) || (AIRLINES[m[1]] || [])[0];
+  return iata ? `${iata} ${m[2]}` : cs;
+}
+function airlineName(cs, rt) {
+  if (rt && rt.airline) return rt.airline;
+  const m = /^([A-Z]{3})\d/.exec(cs || ''); return m && AIRLINES[m[1]] ? AIRLINES[m[1]][1] : '';
+}
+
+/* ---------- ingest ---------- */
+let lastCount = 0, lastOk = 0, lastErr = '', failures = 0;
+// Height above the ground, roughly: barometric altitude corrected with the local altimeter setting
+// (the median nav_qnh that aircraft below 18,000 ft report), less ~15 ft for the airports' elevation.
+const GROUND_FT = 15, MIN_AGL = 50;
+function qnhCorrection(recs) {
+  const q = recs.filter(r => r && r.qnh && !r.ground && r.altFt < 18000).map(r => r.qnh).sort((a, b) => a - b);
+  return q.length < 3 ? 0 : (q[q.length >> 1] - 1013.25) * 27.3;
+}
+const isLow = (r, corr) => r.ground || (r.altFt || 0) + corr - GROUND_FT < MIN_AGL;
+function ingest(recs, now) {
+  const tSec = secs(now), seen = new Set(), corr = qnhCorrection(recs);
+  for (const r of recs) {
+    if (!r || !r.hex || !isFinite(r.lat) || !isFinite(r.lon)) continue;
+    if (cfg.hideLow && isLow(r, corr)) { const c = crafts.get(r.hex); if (c) c.die(tSec); continue; }
+    seen.add(r.hex);
+    let c = crafts.get(r.hex);
+    if (!c) { c = new Craft(r.hex); crafts.set(r.hex, c); if (r.seed) c.seedTrail(r.seed, tSec); }
+    c.update(r, now);
+    if (r.cs) wantRoute(r.cs);
+  }
+  lastCount = seen.size;
+  if (cfg.source !== 'demo') { // gone from the feed while low and descending: it has landed, so drop it now rather than after 45 s
+    for (const c of crafts.values()) if (!c.dying && !seen.has(c.hex) && c.rec && (c.rec.altFt || 0) < 1500 && (c.rec.vr || 0) <= 0) c.die(tSec);
+  }
+  scoreRunways(now);
+  if (sel) renderDetail();
+}
+function clearAll() {
+  select(null);
+  for (const c of crafts.values()) c.dispose();
+  crafts.clear();
+}
+
+/* ---------- live sources ---------- */
+async function getJSON(url) {
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!r.ok) {
+      let msg = ''; try { const j = await r.json(); msg = j.error || j.detail || ''; if (typeof msg !== 'string') msg = JSON.stringify(msg); } catch (e) { /* not json */ }
+      throw new Error(`HTTP ${r.status}${msg ? ': ' + msg : ''}`);
+    }
+    return await r.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('no answer after 10 s');
+    throw e;
+  } finally { clearTimeout(to); }
+}
+const ffBase = () => proxy ? 'ff' : cfg.ffUrl.replace(/\/+$/, '');
+const adsbBase = () => proxy ? 'adsb' : cfg.adsbUrl.replace(/\/+$/, '');
+const num = v => (v == null || v === '' ? null : Number(v));
+
+async function fetchFreeFlight() {
+  const j = await getJSON(`${ffBase()}/v1/flights/nearby?lat=${LAT0}&lon=${LON0}&radius_nm=${cfg.radius}${cfg.hideLow ? '&on_ground=false' : ''}`);
+  return (j.aircraft || []).map(a => ({
+    hex: String(a.hex || '').toLowerCase(), cs: String(a.callsign || '').trim().toUpperCase(), reg: a.registration || '', type: a.type || '',
+    lat: num(a.lat), lon: num(a.lon), altFt: num(a.altitude_ft) ?? 0, gs: num(a.ground_speed_kt) ?? 0, track: num(a.track) ?? 0,
+    vr: num(a.vertical_rate_fpm) ?? 0, sq: a.squawk || '', ground: !!a.on_ground, seen: num(a.seen_pos_s) ?? 0,
+    src: (a.providers || []).join(', ') || a.position_source || ''
+  }));
+}
+async function fetchADSB(base = adsbBase(), pathT = cfg.adsbPath) {
+  const path = pathT.replace('{lat}', LAT0).replace('{lon}', LON0).replace('{dist}', cfg.radius);
+  // the public ADS-B APIs have no altitude filter, so server.py drops low traffic before it reaches the page
+  const q = proxy && cfg.hideLow && base === 'adsb' ? (path.includes('?') ? '&' : '?') + 'min_agl=' + MIN_AGL : '';
+  const j = await getJSON(base + (path.startsWith('/') ? path : '/' + path) + q);
+  return (j.ac || j.aircraft || []).map(a => {
+    const ground = a.alt_baro === 'ground';
+    return {
+      hex: String(a.hex || '').replace('~', '').toLowerCase(), cs: String(a.flight || '').trim().toUpperCase(), reg: a.r || '', type: a.t || '',
+      lat: num(a.lat), lon: num(a.lon), altFt: ground ? 0 : (num(a.alt_baro) ?? num(a.alt_geom) ?? 0), gs: num(a.gs) ?? 0,
+      track: num(a.track) ?? num(a.true_heading) ?? num(a.mag_heading) ?? 0, vr: num(a.baro_rate) ?? num(a.geom_rate) ?? 0,
+      sq: a.squawk || '', ground, seen: num(a.seen_pos) ?? num(a.seen) ?? 0, src: a.type || '', qnh: num(a.nav_qnh)
+    };
+  });
+}
+/* ---------- the shared feed ---------- */
+let liveInterval = 0, lastDataT = 0, historyPending = null;
+async function fetchHistory() {
+  try {
+    const h = await getJSON(`${DATA_URL}/history.json`);
+    const base = h.t / 1000, out = new Map();
+    for (const [hex, pts] of Object.entries(h.ac || {})) out.set(hex, pts.map(([dt, la, lo, alt]) => ({ t: base + dt, lat: la / 1e4, lon: lo / 1e4, ft: alt })));
+    return out;
+  } catch (e) { return new Map(); } // no history yet: trails just start now
+}
+async function fetchCloud() {
+  const j = await getJSON(`${DATA_URL}/live.json`);
+  if (j.t && j.t === lastDataT) return null; // same snapshot as last time
+  lastDataT = j.t || Date.now(); liveInterval = j.interval || 10;
+  const age = Math.max(0, (Date.now() - lastDataT) / 1000), nowSec = Date.now() / 1000;
+  const recs = (j.ac || []).map(a => {
+    if (a.orig || a.dest) routes.set(a.cs, { ok: true, orig: a.orig, dest: a.dest, origName: a.origName, destName: a.destName, airline: a.airline, airlineIata: a.airlineIata });
+    const r = { ...a, ground: false, seen: (a.seen || 0) + age, src: j.source || 'shared feed' };
+    const hist = historyPending && historyPending.get(a.hex);
+    if (hist && !crafts.has(a.hex)) { // a trail from the last few minutes, newest first
+      r.seed = hist.filter(q => nowSec - q.t <= cfg.trailMin * 60).reverse()
+        .map(q => { const p = toXZ(q.lat, q.lon); return { x: p.x, z: p.z, ft: q.ft, age: nowSec - q.t }; });
+    }
+    return r;
+  });
+  applyServerActive(j.active || []);
+  return recs;
+}
+let pollTimer = null, pollGen = 0;
+async function poll() {
+  clearTimeout(pollTimer);
+  if (cfg.source === 'demo') return;
+  const gen = pollGen;
+  try {
+    const recs = cfg.source === 'cloud' ? await fetchCloud() : cfg.source === 'freeflight' ? await fetchFreeFlight() : await fetchADSB();
+    if (gen !== pollGen) return;
+    if (recs) ingest(recs, performance.now());
+    failures = 0; lastOk = Date.now(); lastErr = ''; showBanner('');
+  } catch (e) {
+    if (gen !== pollGen) return;
+    failures++; lastErr = e.message || String(e);
+    if (failures >= 2) showBanner(explainError());
+  }
+  pollTimer = setTimeout(poll, (cfg.source === 'cloud' ? Math.max(2, (liveInterval || 10) / 2) : cfg.refresh) * 1000);
+}
+function explainError() {
+  if (cfg.source === 'cloud') return `Couldn’t reach the live feed (${lastErr}). It may be restarting; the page keeps retrying.`;
+  const name = cfg.source === 'freeflight' ? 'FreeFlight' : 'the ADS-B server';
+  const where = proxy ? (cfg.source === 'freeflight' ? proxy.freeflight : proxy.adsb) : (cfg.source === 'freeflight' ? cfg.ffUrl : cfg.adsbUrl);
+  let hint = proxy
+    ? (cfg.source === 'freeflight' ? 'Check the FreeFlight container is running and FREEFLIGHT_URL points at it.' : 'Check ADSB_URL and any key it needs.')
+    : 'Run server.py on your machine and open the page it serves; browsers block direct requests to most flight APIs.';
+  return `Couldn’t get traffic from ${name} at ${where} (${lastErr}). ${hint}`;
+}
+
+/* ---------- routes ---------- */
+const routes = new Map();
+const rq = []; let rqBusy = false;
+(() => {
+  const saved = store.get('routes', {}), cutoff = Date.now() - 12 * 3600e3;
+  for (const [cs, r] of Object.entries(saved)) if (r && r.at > cutoff) routes.set(cs, r);
+})();
+let saveRoutesT = null;
+function persistRoutes() {
+  clearTimeout(saveRoutesT);
+  saveRoutesT = setTimeout(() => {
+    const out = {}; for (const [cs, r] of routes) if (r.ok && !r.demo) out[cs] = r;
+    store.set('routes', out);
+  }, 2000);
+}
+function routeFor(cs) { const r = cs && routes.get(cs); return r && r.ok ? r : null; }
+function wantRoute(cs) {
+  if (!cs || routes.has(cs) || cfg.source === 'demo' || cfg.source === 'cloud') return;
+  routes.set(cs, { pending: true }); rq.push(cs); pump();
+}
+async function pump() {
+  if (rqBusy) return; rqBusy = true;
+  while (rq.length) {
+    const cs = rq.shift();
+    let r = null; try { r = await lookupRoute(cs); } catch (e) { /* leave unknown */ }
+    routes.set(cs, r ? { ok: true, at: Date.now(), ...r } : { ok: false, at: Date.now() });
+    if (r) persistRoutes();
+    for (const c of crafts.values()) if (c.rec && c.rec.cs === cs) { c.setPhase(); c.renderTag(); }
+    if (sel && sel.rec && sel.rec.cs === cs) renderDetail();
+    await sleep(600);
+  }
+  rqBusy = false;
+}
+async function lookupRoute(cs) {
+  const tries = [];
+  if (cfg.source === 'freeflight') tries.push(`${ffBase()}/v1/route/${encodeURIComponent(cs)}`);
+  tries.push(proxy ? `adsbdb/v0/callsign/${encodeURIComponent(cs)}` : `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`);
+  for (const u of tries) {
+    try { const r = parseRoute(await getJSON(u)); if (r) return r; } catch (e) { /* try next */ }
+  }
+  return null;
+}
+function findRoute(o, d = 0) {
+  if (!o || typeof o !== 'object' || d > 5) return null;
+  if (o.origin && o.destination) return o;
+  for (const k of Object.keys(o)) { const r = findRoute(o[k], d + 1); if (r) return r; }
+  return null;
+}
+function apInfo(x) {
+  if (!x) return { code: '', name: '' };
+  if (typeof x === 'string') return { code: normCode(x), name: '' };
+  return { code: normCode(x.iata_code || x.iata || x.icao_code || x.icao || x.code || ''), name: x.municipality || x.city || x.name || '' };
+}
+function parseRoute(j) {
+  const r = findRoute(j); if (!r) return null;
+  const o = apInfo(r.origin), d = apInfo(r.destination);
+  if (!o.code && !d.code) return null;
+  const al = r.airline || {};
+  return { orig: o.code, origName: o.name, dest: d.code, destName: d.name,
+    airline: typeof al === 'string' ? al : (al.name || ''), airlineIata: typeof al === 'object' ? (al.iata || al.iata_code || '') : '' };
+}
+
+/* ---------- demo traffic ---------- */
+const CARRIER = {
+  DAL:{t:['A321','B739','BCS3','B752']}, JBU:{t:['A320','A321','E190']}, AAL:{t:['A321','B738','E75L']}, UAL:{t:['B739','A320','B38M','B772']},
+  SWA:{t:['B737','B38M']}, NKS:{t:['A320','A21N']}, ASA:{t:['B739']}, RPA:{t:['E75L']}, EDV:{t:['CRJ9']}, ACA:{t:['BCS3'],hub:'YYZ'},
+  BAW:{t:['B77W','A35K'],hub:'LHR'}, VIR:{t:['A35K','B789'],hub:'LHR'}, AFR:{t:['B77W','A359'],hub:'CDG'}, KLM:{t:['B789'],hub:'AMS'},
+  DLH:{t:['B748','A346'],hub:'FRA'}, UAE:{t:['A388'],hub:'DXB'}, QTR:{t:['B77W'],hub:'DOH'}, TAP:{t:['A21N'],hub:'LIS'},
+  EJA:{t:['C68A','CL35'],pool:['PBI','ASE','FLL','BNA'],biz:true}, LXJ:{t:['CL35','E55P'],pool:['PBI','ASE','FLL'],biz:true},
+};
+const DEMO = {
+  JFK: { apr: 'S13L', arr: ['JFK','13L/31R',0], dep: ['JFK','13R/31L',0], n: [5, 3], c: ['DAL','DAL','JBU','JBU','AAL','BAW','AFR','VIR','UAE','KLM','QTR','DLH'] },
+  LGA: { apr: 'I22', arr: ['LGA','4/22',1], dep: ['LGA','13/31',0], n: [4, 2], c: ['DAL','AAL','UAL','SWA','JBU','ACA','RPA','EDV'] },
+  EWR: { apr: 'I22L', arr: ['EWR','4R/22L',1], dep: ['EWR','4L/22R',1], n: [4, 3], c: ['UAL','UAL','UAL','JBU','SWA','NKS','ASA','TAP','DLH'] },
+  TEB: { arr: ['TEB','1/19',1], dep: ['TEB','6/24',1], n: [1, 1], c: ['EJA','LXJ'] },
+};
+const N_THRU = 5;
+const sim = { flights: [] };
+const bvec = b => ({ x: Math.sin(b * D2R), z: -Math.cos(b * D2R) });
+const wp = (x, z, ft, kt) => ({ x, z, ft, kt });
+function rwyInfo([code, name, dir]) {
+  const [a, b] = AP[code].rwys[name];
+  let A = toXZ(a[0], a[1]), B = toXZ(b[0], b[1]); if (dir) [A, B] = [B, A];
+  const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz);
+  return { T: A, u: { x: dx / L, z: dz / L } };
+}
+function buildPath(w) { const cum = [0]; for (let i = 1; i < w.length; i++) cum.push(cum[i - 1] + Math.hypot(w[i].x - w[i - 1].x, w[i].z - w[i - 1].z)); return { w, cum, total: cum[cum.length - 1] }; }
+function sample(P, s) {
+  const w = P.w, c = P.cum; s = clamp(s, 0, P.total);
+  let i = 0; while (i < w.length - 2 && c[i + 1] < s) i++;
+  const a = w[i], b = w[i + 1], L = (c[i + 1] - c[i]) || 1e-6, f = (s - c[i]) / L, dx = b.x - a.x, dz = b.z - a.z;
+  const kt = a.kt + (b.kt - a.kt) * f;
+  return { x: a.x + dx * f, z: a.z + dz * f, ft: a.ft + (b.ft - a.ft) * f, kt, track: ((Math.atan2(dx, -dz) * R2D) + 360) % 360, vr: (b.ft - a.ft) / L * (kt / 60) };
+}
+function ident(carrier, other, kind, apCode) {
+  const info = CARRIER[carrier];
+  const n = info.biz ? 100 + Math.floor(Math.random() * 899) : (carrier === 'RPA' ? 4300 : carrier === 'EDV' ? 5100 : 0) + 1 + Math.floor(Math.random() * (info.hub ? 120 : 2400));
+  const cs = carrier + n;
+  const orig = kind === 'arr' ? other : apCode, dest = kind === 'arr' ? apCode : other;
+  const al = AIRLINES[carrier] || ['', ''];
+  routes.set(cs, { ok: true, demo: true, orig, dest, origName: CITY[orig] || '', destName: CITY[dest] || '', airline: al[1], airlineIata: al[0] });
+  const us = !info.hub;
+  return { cs, type: pick(info.t), reg: us ? 'N' + (100 + Math.floor(Math.random() * 899)) + String.fromCharCode(65 + Math.random() * 26 | 0, 65 + Math.random() * 26 | 0) : '' };
+}
+function newFlight(kind, apCode, frac) {
+  let w, id;
+  if (kind === 'thru') {
+    const orig = pick(DOMESTIC.concat(['YYZ','YUL']));
+    const dest = pick(DOMESTIC.concat(['YYZ','YUL']).filter(c => Math.abs(angDiff(BEAR[c] * D2R, BEAR[orig] * D2R)) > 2.1));
+    const carrier = pick(['UAL','AAL','DAL','JBU','ACA','SWA','ASA']);
+    const al = AIRLINES[carrier];
+    const cs = carrier + (100 + Math.floor(Math.random() * 2800));
+    routes.set(cs, { ok: true, demo: true, orig, dest, origName: CITY[orig], destName: CITY[dest], airline: al[1], airlineIata: al[0] });
+    id = { cs, type: pick(CARRIER[carrier].t), reg: carrier === 'ACA' ? '' : 'N' + (100 + Math.floor(Math.random() * 899)) + 'XY' };
+    const e = bvec(BEAR[orig]), x = bvec(BEAR[dest]), alt = 1000 * Math.round(rand(28, 37)), kt = rand(430, 480);
+    w = [wp(e.x * 47, e.z * 47, alt, kt), wp(x.x * 47, x.z * 47, alt, kt)];
+  } else {
+    const spec = DEMO[apCode], carrier = pick(spec.c), info = CARRIER[carrier];
+    const other = info.hub || pick(info.pool || DOMESTIC);
+    id = ident(carrier, other, kind, apCode);
+    const b = BEAR[other];
+    const apr = spec.apr && APPROACHES.find(x => x.a === apCode && x.id === spec.apr);
+    if (kind === 'arr' && apr) { // fly the published approach: join it 15 nm out, then follow its path and glide path
+      const { u } = rwyInfo(spec.arr), n = apr.xz.length, T = apr.xz[n - 1], S0 = apr.xz[0];
+      const out = { x: S0.x - apr.xz[1].x, z: S0.z - apr.xz[1].z }, oL = Math.hypot(out.x, out.z) || 1; out.x /= oL; out.z /= oL;
+      const perp = { x: -out.z, z: out.x }, ev = bvec(b), R = rand(37, 42), E = { x: ev.x * R, z: ev.z * R };
+      const side = Math.sign((E.x - S0.x) * perp.x + (E.z - S0.z) * perp.z) || 1, big = !info.biz;
+      w = [wp(E.x, E.z, big ? rand(11000, 15000) : rand(7000, 9000), big ? 290 : 250)];
+      if ((E.x - S0.x) * out.x + (E.z - S0.z) * out.z < 3) // arriving from the wrong side: swing wide onto the approach
+        w.push(wp(S0.x + out.x * 5 + perp.x * side * 7, S0.z + out.z * 5 + perp.z * side * 7, 6000, 230));
+      for (let i = 0; i < n - 1; i++) {
+        const s = apr.s[i], f = s / apr.s[0];
+        w.push(wp(apr.xz[i].x, apr.xz[i].z, Math.min(altAt(apr, s) * FT_PER_NM, 6000), 145 + 70 * f));
+      }
+      w.push(wp(T.x, T.z, apr.el + apr.tch, 140));
+      w.push(wp(T.x + u.x * 0.9, T.z + u.z * 0.9, 0, 25));
+    } else if (kind === 'arr') {
+      const { T, u } = rwyInfo(spec.arr), perp = { x: -u.z, z: u.x };
+      const F = { x: T.x - u.x * 10, z: T.z - u.z * 10 };
+      const ev = bvec(b), R = rand(37, 42), E = { x: ev.x * R, z: ev.z * R };
+      const side = Math.sign((E.x - F.x) * perp.x + (E.z - F.z) * perp.z) || 1;
+      const big = !info.biz;
+      w = [wp(E.x, E.z, big ? rand(11000, 15000) : rand(7000, 9000), big ? 290 : 250)];
+      if ((E.x - F.x) * u.x + (E.z - F.z) * u.z > -4) w.push(wp(T.x + u.x * 4 + perp.x * side * 9, T.z + u.z * 4 + perp.z * side * 9, 7000, 230));
+      w.push(wp(T.x - u.x * 15 + perp.x * side * 6, T.z - u.z * 15 + perp.z * side * 6, 4000, 200));
+      w.push(wp(F.x, F.z, 3000, 170));
+      w.push(wp(T.x, T.z, 50, 140));
+      w.push(wp(T.x + u.x * 0.9, T.z + u.z * 0.9, 0, 25));
+    } else {
+      const { T, u } = rwyInfo(spec.dep), xv = bvec(b), R = 45;
+      w = [wp(T.x, T.z, 0, 35), wp(T.x + u.x * 1.2, T.z + u.z * 1.2, 0, 155),
+        wp(T.x + u.x * 5, T.z + u.z * 5, 3000, 210), wp(xv.x * R, xv.z * R, 17000, 320)];
+    }
+  }
+  const P = buildPath(w), f = {
+    kind, apCode, P, s: P.total * (frac || 0), ...id,
+    hex: (Math.random() * 0xffffff | 0).toString(16).padStart(6, 'a'),
+    sq: String(1000 + Math.floor(Math.random() * 6000)).replace(/[89]/g, '4')
+  };
+  if (frac) { // backfill a trail so the scene looks lived-in from the first frame
+    const seed = []; let s = f.s;
+    for (let k = 1; k * 4 <= cfg.trailMin * 60; k++) {
+      s -= Math.max(sample(P, s).kt, 20) / 3600 * cfg.demoSpeed * 4;
+      if (s <= 0) break;
+      const p = sample(P, s); seed.push({ x: p.x, z: p.z, ft: p.ft, age: k * 4 });
+    }
+    f.seed = seed;
+  }
+  return f;
+}
+function simInit() {
+  sim.flights = [];
+  for (const [code, spec] of Object.entries(DEMO)) {
+    for (let i = 0; i < spec.n[0]; i++) sim.flights.push(newFlight('arr', code, clamp((i + Math.random() * 0.5) / spec.n[0], 0.03, 0.93)));
+    for (let i = 0; i < spec.n[1]; i++) sim.flights.push(newFlight('dep', code, clamp((i + 0.2 + Math.random() * 0.5) / spec.n[1], 0.05, 0.9)));
+  }
+  for (let i = 0; i < N_THRU; i++) sim.flights.push(newFlight('thru', null, rand(0.1, 0.9)));
+}
+function simStep(dt, now) {
+  const tSec = secs(now);
+  for (let i = sim.flights.length - 1; i >= 0; i--) {
+    const f = sim.flights[i];
+    f.s += Math.max(sample(f.P, f.s).kt, 20) / 3600 * dt * cfg.demoSpeed;
+    if (f.s >= f.P.total) { sim.flights.splice(i, 1); const c = crafts.get(f.hex); if (c) c.die(tSec); }
+  }
+  const count = (k, a) => sim.flights.filter(f => f.kind === k && f.apCode === a).length;
+  for (const [code, spec] of Object.entries(DEMO)) {
+    if (count('arr', code) < spec.n[0] && Math.random() < dt * 0.05 * cfg.demoSpeed) sim.flights.push(newFlight('arr', code, 0));
+    if (count('dep', code) < spec.n[1] && Math.random() < dt * 0.05 * cfg.demoSpeed) sim.flights.push(newFlight('dep', code, 0));
+  }
+  if (sim.flights.filter(f => f.kind === 'thru').length < N_THRU && Math.random() < dt * 0.04 * cfg.demoSpeed) sim.flights.push(newFlight('thru', null, 0));
+}
+function simRecords() {
+  return sim.flights.map(f => {
+    const p = sample(f.P, f.s), ll = toLL(p.x, p.z), ground = p.ft <= 0.5;
+    const r = { hex: f.hex, cs: f.cs, reg: f.reg, type: f.type, lat: ll.lat, lon: ll.lon, altFt: Math.round(p.ft / 25) * 25, gs: p.kt,
+      track: p.track, vr: ground ? 0 : Math.round(p.vr / 64) * 64, ground, sq: f.sq, seen: 0, scale: cfg.demoSpeed, seed: f.seed, src: 'Simulated' };
+    f.seed = null;
+    return r;
+  });
+}
+
+/* ---------- selection & detail ---------- */
+const detailEl = $('detail');
+function select(c) {
+  const prev = sel; sel = c;
+  if (prev && prev !== c) prev.renderTag();
+  if (!c) following = false;
+  if (c) c.renderTag();
+  renderDetail();
+}
+function renderDetail() {
+  if (!sel || !sel.rec) { detailEl.hidden = true; document.body.classList.remove('has-detail'); selRing.visible = false; return; }
+  const r = sel.rec, rt = routeFor(r.cs), pending = routes.get(r.cs)?.pending;
+  detailEl.hidden = false; document.body.classList.add('has-detail');
+  $('dFlight').textContent = flightNo(r.cs, rt) || r.reg || r.hex.toUpperCase();
+  $('dAirline').textContent = [airlineName(r.cs, rt), r.cs && flightNo(r.cs, rt) !== r.cs ? `callsign ${r.cs}` : ''].filter(Boolean).join(', ') || 'No callsign broadcast';
+  $('dOrig').textContent = rt ? (rt.orig || '?') : '—';
+  $('dDest').textContent = rt ? (rt.dest || '?') : '—';
+  $('dOrigN').textContent = rt ? (rt.origName || '') : (pending ? 'Finding route…' : 'Route unknown');
+  $('dDestN').textContent = rt ? (rt.destName || '') : '';
+  const vr = Math.round(r.vr || 0);
+  const cells = [
+    ['Altitude', r.ground ? 'On ground' : `${Math.round(r.altFt || 0).toLocaleString()} ft`],
+    ['Speed', `${Math.round(r.gs || 0)} kt`],
+    ['Vertical', r.ground ? '—' : `${vr > 0 ? '+' : vr < 0 ? '−' : ''}${Math.abs(vr).toLocaleString()} fpm`],
+    ['Heading', `${String(Math.round(r.track || 0) % 360).padStart(3, '0')}°`],
+    ['Aircraft', r.type || '—'], ['Registration', r.reg || '—'],
+    ['Squawk', r.sq || '—'], ['ICAO hex', r.hex.toUpperCase()], ['Data', r.src || cfg.source],
+  ];
+  $('dGrid').innerHTML = cells.map(([k, v]) => `<div><dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd></div>`).join('');
+  $('dFollow').textContent = following ? 'Stop following' : 'Follow this flight';
+}
+$('dClose').onclick = () => select(null);
+$('dFollow').onclick = () => { following = !following; renderDetail(); };
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) return;
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(hitList, false).find(h => h.object.userData.craft.model.visible);
+  select(hit ? hit.object.userData.craft : null);
+});
+// if the user drags the view while following, stop following
+controls.addEventListener('start', () => { if (following) { following = false; renderDetail(); } });
+
+/* ---------- UI ---------- */
+const TAG_MODES = ['full', 'compact', 'off'], TAG_LABEL = { full: 'Tags: full', compact: 'Tags: short', off: 'Tags: off' };
+const bTags = $('bTags');
+function syncTagsBtn() { bTags.textContent = TAG_LABEL[cfg.tags]; }
+bTags.onclick = () => {
+  cfg.tags = TAG_MODES[(TAG_MODES.indexOf(cfg.tags) + 1) % 3]; store.set('cfg', cfg); syncTagsBtn();
+  for (const c of crafts.values()) c.renderTag();
+};
+syncTagsBtn();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let flyHome = null;
+$('bHome').onclick = () => {
+  following = false; renderDetail();
+  if (reduceMotion) { camera.position.copy(homeCam()); controls.target.copy(HOME_T); return; }
+  flyHome = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1: homeCam() };
+};
+
+const settingsEl = $('settings'), bSettings = $('bSettings');
+function openSettings(on) {
+  settingsEl.hidden = !on; bSettings.setAttribute('aria-expanded', String(on));
+  if (on) { fillForm(); settingsEl.querySelector('input[name=source]:checked')?.focus(); }
+}
+bSettings.onclick = () => openSettings(settingsEl.hidden);
+$('sClose').onclick = () => openSettings(false);
+const outs = {
+  sRadius: v => `${v} nm`, sRefresh: v => `${v} s`, sExag: v => `${v}×`, sTrail: v => `${v} min`,
+  sCeil: v => v >= 45000 ? 'Show all' : `${Number(v).toLocaleString()} ft`
+};
+for (const id of Object.keys(outs)) $(id).addEventListener('input', e => { $('o' + id.slice(1)).textContent = outs[id](e.target.value); });
+function fillForm() {
+  settingsEl.querySelectorAll('input[name=source]').forEach(i => { i.checked = i.value === cfg.source; });
+  settingsEl.querySelectorAll('[data-cloud]').forEach(l => { l.hidden = !DATA_URL; });
+  settingsEl.querySelectorAll('[data-local]').forEach(l => { l.hidden = !!DATA_URL; });
+  settingsEl.querySelector('.seg').style.gridTemplateColumns = `repeat(${DATA_URL ? 2 : 3}, 1fr)`;
+  $('sLocal').hidden = !!DATA_URL;
+  $('sLow').disabled = !!DATA_URL;
+  $('sFF').value = cfg.ffUrl; $('sAdsb').value = cfg.adsbUrl; $('sAdsbPath').value = cfg.adsbPath;
+  $('sFF').disabled = $('sAdsb').disabled = !!proxy;
+  $('sProxy').innerHTML = DATA_URL
+    ? `Live traffic comes from one shared feed, refreshed every ${liveInterval || 10} s for everyone. Ground traffic is already left out.`
+    : proxy
+    ? `Connected through server.py. FreeFlight: <code>${esc(proxy.freeflight)}</code>. ADS-B: <code>${esc(proxy.adsb)}</code>. Change these with its environment variables.`
+    : 'Live traffic needs server.py running on your computer, because flight APIs block requests from web pages. Open the page it serves at http://localhost:8080.';
+  const set = (id, v) => { $(id).value = v; $('o' + id.slice(1)).textContent = outs[id](v); };
+  set('sRadius', cfg.radius); set('sRefresh', cfg.refresh); set('sExag', cfg.exag); set('sTrail', cfg.trailMin); set('sCeil', cfg.ceiling);
+  $('sDemo').value = String(cfg.demoSpeed);
+  $('sGlide').checked = cfg.glide; $('sLow').checked = cfg.hideLow;
+}
+$('sForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const before = JSON.stringify([cfg.source, cfg.ffUrl, cfg.adsbUrl, cfg.adsbPath, cfg.radius]);
+  cfg.source = settingsEl.querySelector('input[name=source]:checked')?.value || 'demo';
+  if (!proxy) { cfg.ffUrl = $('sFF').value.trim() || 'http://localhost:8000'; cfg.adsbUrl = $('sAdsb').value.trim() || 'https://api.adsb.lol'; }
+  cfg.adsbPath = $('sAdsbPath').value.trim() || '/v2/point/{lat}/{lon}/{dist}';
+  cfg.radius = +$('sRadius').value; cfg.refresh = +$('sRefresh').value; cfg.exag = +$('sExag').value;
+  cfg.trailMin = +$('sTrail').value; cfg.ceiling = +$('sCeil').value; cfg.demoSpeed = +$('sDemo').value;
+  cfg.glide = $('sGlide').checked; updateActive();
+  const lowChanged = cfg.hideLow !== $('sLow').checked; cfg.hideLow = $('sLow').checked;
+  store.set('cfg', cfg);
+  for (const c of crafts.values()) c.full = true;
+  const changed = lowChanged || before !== JSON.stringify([cfg.source, cfg.ffUrl, cfg.adsbUrl, cfg.adsbPath, cfg.radius]);
+  if (changed) startSource(); else if (cfg.source !== 'demo') poll();
+  openSettings(false);
+});
+$('bannerDemo').onclick = () => { cfg.source = 'demo'; store.set('cfg', cfg); startSource(); };
+function showBanner(text) { $('banner').hidden = !text; $('bannerText').textContent = text; }
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!settingsEl.hidden) openSettings(false); else if (sel) select(null);
+});
+
+function startSource() {
+  pollGen++; clearTimeout(pollTimer); clearAll(); showBanner('');
+  failures = 0; lastErr = ''; lastOk = 0; lastCount = 0;
+  for (const ap of APPROACHES) ap.score = 0;
+  for (const k of Object.keys(rwyActive)) delete rwyActive[k];
+  for (const k of Object.keys(TRACKS)) delete TRACKS[k];
+  for (const k of Object.keys(landVotes)) delete landVotes[k];
+  for (const k of Object.keys(SHOWN)) dropShown(k);
+  lastScoreT = 0;
+  if (cfg.source === 'demo' && !window.NOSEED) { // the demo knows its own runways, so show them from the start
+    for (const [code, spec] of Object.entries(DEMO)) {
+      const ap = spec.apr && APPROACHES.find(x => x.a === code && x.id === spec.apr);
+      if (ap) ap.score = 3;
+    }
+  }
+  updateActive();
+  serverWant = {}; lastDataT = 0;
+  if (cfg.source === 'demo') { simInit(); ingest(simRecords(), performance.now()); }
+  else if (cfg.source === 'cloud') {
+    sim.flights = [];
+    const gen = pollGen;
+    fetchHistory().then(h => { if (gen !== pollGen) return; historyPending = h; poll().then(() => { historyPending = null; }); });
+  }
+  else { sim.flights = []; poll(); }
+}
+
+const statusEl = $('status');
+function renderStatus() {
+  const live = [...crafts.values()].filter(c => !c.dying && !c.hidden).length;
+  let dot = '', text;
+  if (cfg.source === 'demo') { dot = ''; text = `Demo traffic, ${live} aircraft${proxy || DATA_URL ? '' : ' · run server.py for live'}`; }
+  else if (cfg.source === 'cloud') {
+    if (!lastDataT) { dot = failures ? 'bad' : ''; text = failures ? 'Live feed isn’t answering' : 'Connecting to the live feed…'; }
+    else {
+      const ago = Math.max(0, Math.round((Date.now() - lastDataT) / 1000));
+      dot = failures || ago > 60 ? 'bad' : 'on';
+      text = `Live, ${live} aircraft, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
+    }
+  }
+  else {
+    const name = cfg.source === 'freeflight' ? 'FreeFlight' : (proxy && /adsb\.lol/.test(proxy.adsb) ? 'adsb.lol' : 'ADS-B v2');
+    if (!lastOk) { dot = failures ? 'bad' : ''; text = failures ? `${name} isn’t answering` : `Connecting to ${name}…`; }
+    else {
+      const ago = Math.round((Date.now() - lastOk) / 1000);
+      dot = failures ? 'bad' : 'on';
+      text = `${name}, ${live} aircraft within ${cfg.radius} nm, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
+    }
+  }
+  statusEl.innerHTML = `<span class="live ${dot}"></span>${esc(text)}`;
+}
+
+/* ---------- theme ---------- */
+function applyTheme() {
+  readColors();
+  M.water.color.copy(C.water); M.bay.color.copy(C.water); M.land.color.copy(C.land); M.shore.color.copy(C.shore);
+  M.runway.color.copy(C.runway); M.aptRing.color.copy(C.apt); M.ring.color.copy(C.ring); M.drop.color.copy(C.muted); M.sel.color.copy(C.ink);
+  scene.fog.color.copy(C.water); scene.background = C.water;
+  for (const m of Object.values(GM)) m.color.copy(C.glide);
+  for (const p of PHASES) {
+    MODEL_MATS[p].color.copy(C[p]); MODEL_MATS[p].emissive.copy(C[p]).multiplyScalar(isDark() ? 0.35 : 0.2);
+    TRAIL_MATS[p].uniforms.uColor.value.copy(C[p]); TRAIL_MATS[p].uniforms.uOpacity.value = isDark() ? 0.6 : 0.5;
+  }
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+applyTheme();
+
+/* ---------- loop ---------- */
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+const v3 = new THREE.Vector3();
+function placeEl(el, p, shift, state) {
+  v3.copy(p).project(camera);
+  const vis = v3.z < 1 && Math.abs(v3.x) < 1.2 && Math.abs(v3.y) < 1.2;
+  if (vis !== state.vis) { el.style.display = vis ? '' : 'none'; state.vis = vis; }
+  if (vis) el.style.transform = `translate3d(${((v3.x + 1) / 2 * innerWidth) | 0}px,${((1 - v3.y) / 2 * innerHeight) | 0}px,0) ${shift}`;
+}
+for (const s of staticLabels) s.state = { vis: true };
+
+let lastFrame = performance.now(), simAcc = 0, statusAcc = 1, sweepAcc = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+  const tSec = secs(now), span = cfg.trailMin * 60;
+
+  if (cfg.source === 'demo') {
+    simStep(dt, now); simAcc += dt;
+    if (simAcc >= 1) { simAcc = 0; ingest(simRecords(), now); }
+  }
+  for (const p of PHASES) { TRAIL_MATS[p].uniforms.uNow.value = tSec; TRAIL_MATS[p].uniforms.uSpan.value = span; }
+
+  for (const c of crafts.values()) c.tick(dt, now, tSec);
+
+  sweepAcc += dt;
+  if (sweepAcc > 1) {
+    sweepAcc = 0;
+    for (const [hex, c] of crafts) {
+      if (!c.dying && cfg.source !== 'demo' && now - c.lastSeen > 45000) c.die(tSec);
+      if (c.dying && (tSec - c.diedAt > span || !c.pts.length)) { c.dispose(); crafts.delete(hex); }
+    }
+  }
+
+  if (flyHome) {
+    flyHome.t = Math.min(1, flyHome.t + dt / 1.1);
+    const e = flyHome.t < 0.5 ? 2 * flyHome.t * flyHome.t : 1 - Math.pow(-2 * flyHome.t + 2, 2) / 2;
+    camera.position.lerpVectors(flyHome.p0, flyHome.p1, e); controls.target.lerpVectors(flyHome.t0, HOME_T, e);
+    if (flyHome.t >= 1) flyHome = null;
+  } else if (following && sel) {
+    const before = controls.target.clone();
+    controls.target.lerp(sel.model.position, 1 - Math.exp(-dt * 3));
+    camera.position.add(v3.subVectors(controls.target, before));
+  }
+  glideGroup.scale.y = cfg.exag;
+  controls.update();
+
+  if (sel && !sel.dying && !sel.hidden) {
+    selRing.visible = true; selRing.position.copy(sel.model.position); selRing.scale.setScalar(sel.scale);
+  } else selRing.visible = false;
+
+  renderer.render(scene, camera);
+
+  for (const s of staticLabels) placeEl(s.el, s.p, s.shift, s.state);
+  for (const v of Object.values(SHOWN)) {
+    gv.set(v.top.x, v.top.y * cfg.exag, v.top.z);
+    placeEl(v.el, gv, 'translate(-50%,-120%)', v.state);
+  }
+  for (const c of crafts.values()) {
+    if (c.dying || c.hidden || !c.rec) { c.showTag(false); continue; }
+    const isSel = c === sel;
+    if (cfg.tags === 'off' && !isSel) { c.showTag(false); continue; }
+    v3.copy(c.model.position).project(camera);
+    const d = camera.position.distanceTo(c.model.position);
+    const op = isSel ? 1 : clamp((170 - d) / 60, 0, 1);
+    const vis = v3.z < 1 && Math.abs(v3.x) < 1.1 && Math.abs(v3.y) < 1.1 && op > 0.02;
+    c.showTag(vis);
+    if (vis) {
+      c.tag.style.transform = `translate3d(${((v3.x + 1) / 2 * innerWidth) | 0}px,${((1 - v3.y) / 2 * innerHeight) | 0}px,0)`;
+      c.tag.style.opacity = op.toFixed(2); c.tag.style.zIndex = isSel ? 2 : 1;
+    }
+  }
+
+  statusAcc += dt;
+  if (statusAcc > 1) { statusAcc = 0; renderStatus(); if (sel) renderDetail(); }
+}
+
+/* ---------- boot ---------- */
+(async () => {
+  try {
+    if (DATA_URL) throw new Error('shared feed');
+    const r = await fetch('proxy/status', { cache: 'no-store' });
+    if (r.ok) { const j = await r.json(); if (j && j.ok) proxy = j; }
+  } catch (e) { /* no local server: direct mode */ }
+  if (proxy && !DATA_URL) {
+    if (!savedCfg) cfg.source = 'adsb'; // live by default when served locally
+    if (!savedCfg && proxy.adsbPath) cfg.adsbPath = proxy.adsbPath;
+  }
+  startSource();
+  requestAnimationFrame(frame);
+})();
+})();
+</script>
+</body>
+</html>

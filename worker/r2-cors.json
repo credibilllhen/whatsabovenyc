@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://whatsabove.nyc", "https://www.whatsabove.nyc"],
+        "methods": ["GET", "HEAD"]
+      },
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
