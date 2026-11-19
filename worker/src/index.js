@@ -113,7 +113,7 @@ function parseRoute(j) {
 }
 
 /* ---------- the poller ---------- */
-export class Poller {
+export class PollerV2 {
   constructor(state, env) {
     this.state = state; this.env = env;
     this.loaded = false;
