@@ -84,6 +84,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #legend span{white-space:nowrap}
 .sw{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 
+#pb{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 40px);width:min(560px,calc(100vw - 24px));display:flex;align-items:center;gap:10px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 10px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+#pbPlay{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--ink);color:var(--water);display:grid;place-items:center;cursor:pointer;padding:0}
+#pbPlay svg{width:14px;height:14px;fill:currentColor}
+#pbSlider{flex:1;min-width:0;accent-color:var(--ink);height:26px;cursor:pointer}
+#pbTime{flex:none;min-width:84px;text-align:right;font:600 14px/1.1 'Barlow Condensed','Arial Narrow',sans-serif;font-variant-numeric:tabular-nums}
+#pbTime small{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+#pbSpeed{flex:none;font:inherit;font-size:13px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 4px}
+#pbLive{flex:none;padding:7px 10px;min-height:30px}
+#pbLive .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
+#pbLive.on .dot{background:#d33c2f}
+#pbLive.on{border-color:var(--ink)}
 #detail{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);width:310px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .dhead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 #dFlight{font:700 30px/1 'Barlow Condensed','Arial Narrow',sans-serif}
@@ -132,6 +144,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   #hud{max-width:100%;padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
   #detail{left:0;right:0;bottom:0;width:auto;border-radius:12px 12px 0 0;border-width:1px 0 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
   body.has-detail #legend{display:none}
+  body.has-detail #pb{display:none}
+  #pb{bottom:calc(env(safe-area-inset-bottom,0px) + 56px);gap:7px}
+  #pbSpeed{display:none}
+  #pbTime{min-width:64px}
   #settings{width:100%;border-left:0}
   .tb{padding:9px 9px}
 }
@@ -149,6 +165,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
 <nav id="tools" aria-label="View controls">
   <button class="tb" id="bTags" type="button">Tags: full</button>
+  <button class="tb" id="bTop" type="button" aria-pressed="false">Top view</button>
   <button class="tb" id="bHome" type="button">Recenter</button>
   <button class="tb" id="bSettings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
 </nav>
@@ -158,6 +175,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <span><i class="sw" style="background:var(--dep)"></i>Departing</span>
   <span><i class="sw" style="background:var(--thru)"></i>Passing through</span>
   <span><i class="sw" style="background:var(--glide)"></i>Active approach</span>
+</div>
+
+<div id="pb" role="group" aria-label="Playback of the last 30 minutes" hidden>
+  <button id="pbPlay" type="button" aria-label="Pause"></button>
+  <input type="range" id="pbSlider" min="-1800" max="0" step="1" value="0" aria-label="Time, up to 30 minutes ago">
+  <span id="pbTime">Live</span>
+  <select id="pbSpeed" aria-label="Playback speed"><option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="60">60×</option></select>
+  <button class="tb" id="pbLive" type="button"><span class="dot"></span>Live</button>
 </div>
 
 <div id="banner" role="alert" hidden>
@@ -341,7 +366,9 @@ controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 1.5; controls.maxDistance = 260;
 controls.screenSpacePanning = false;
 const HOME_T = new THREE.Vector3(-2, 0, -1);
-function homeCam() { const far = innerWidth / innerHeight < 0.8 ? 1.55 : 1; return new THREE.Vector3(10, 34, 46).multiplyScalar(far).add(HOME_T); }
+// A steeper default angle: a low camera squashes north-south distances, which made the map look off.
+function homeCam() { const far = innerWidth / innerHeight < 0.8 ? 1.55 : 1; return new THREE.Vector3(6, 50, 30).multiplyScalar(far).add(HOME_T); }
+function topCam() { const far = innerWidth / innerHeight < 0.8 ? 1.7 : 1; return new THREE.Vector3(0, 66 * far, 0.01).add(HOME_T); }
 camera.position.copy(homeCam()); controls.target.copy(HOME_T);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9));
@@ -595,6 +622,7 @@ function dropShown(rk) {
 let lastScoreT = 0;
 const rwyActive = {};
 function scoreRunways(now) {
+  if (replay.on) return; // approaches reflect now, not the moment being replayed
   if (cfg.source === 'cloud') return; // the poller does this for everyone
   const dtMin = lastScoreT ? (now - lastScoreT) / 60000 : 0; lastScoreT = now;
   const decay = Math.pow(0.5, dtMin / 8);
@@ -811,7 +839,7 @@ class Craft {
   }
   die(tSec) {
     if (this.dying) return;
-    if (this.rec && (this.rec.ground || ((this.rec.altFt || 0) < 1500 && (this.rec.vr || 0) <= 0))) recordLanding(this, performance.now());
+    if (!replay.on && this.rec && (this.rec.ground || ((this.rec.altFt || 0) < 1500 && (this.rec.vr || 0) <= 0))) recordLanding(this, performance.now());
     this.dying = true; this.diedAt = tSec; this.model.visible = false; this.drop.visible = false; this.showTag(false);
     if (sel === this) select(null);
   }
@@ -910,8 +938,137 @@ function qnhCorrection(recs) {
   return q.length < 3 ? 0 : (q[q.length >> 1] - 1013.25) * 27.3;
 }
 const isLow = (r, corr) => r.ground || (r.altFt || 0) + corr - GROUND_FT < MIN_AGL;
+/* ---------- playback ----------
+   Every aircraft the page sees is kept for 30 minutes, one position per aircraft every 10 s.
+   On the live site this starts from the poller's history.json (a position every 20 s), so the full
+   30 minutes are there as soon as the page opens. Playback interpolates between positions. */
+const PB_KEEP_MS = 30 * 60e3, PB_EVERY_MS = 10e3;
+const pbHist = new Map(); // hex -> [{ t, lat, lon, ft, cs, type, reg }], oldest first
+const replay = { on: false, t: 0, playing: false, speed: 4, acc: 0 };
+let pbPrune = 0;
+function pbRecord(recs, corr) {
+  const wall = Date.now();
+  for (const r of recs) {
+    if (!r || !r.hex || !isFinite(r.lat) || !isFinite(r.lon) || isLow(r, corr)) continue;
+    const t = wall - clamp(r.seen || 0, 0, 30) * 1000;
+    let a = pbHist.get(r.hex); if (!a) { a = []; pbHist.set(r.hex, a); }
+    const last = a[a.length - 1];
+    if (last && t - last.t < PB_EVERY_MS) continue;
+    a.push({ t, lat: r.lat, lon: r.lon, ft: r.altFt || 0, cs: r.cs || '', type: r.type || '', reg: r.reg || '', k: r.scale || 1 }); // k: demo fast-forward
+  }
+  if (wall - pbPrune > 30e3) {
+    pbPrune = wall;
+    for (const [hex, a] of pbHist) { while (a.length && wall - a[0].t > PB_KEEP_MS) a.shift(); if (!a.length) pbHist.delete(hex); }
+  }
+}
+function pbMergeServer(h) { // positions from before this page opened
+  const meta = h.meta || {};
+  for (const [hex, pts] of Object.entries(h.ac || {})) {
+    const m = meta[hex] || [], old = pts.map(([dt, la, lo, alt]) => ({ t: h.t + dt * 1000, lat: la / 1e4, lon: lo / 1e4, ft: alt, cs: m[0] || '', type: m[1] || '', reg: m[2] || '' }));
+    const a = pbHist.get(hex) || [], first = a.length ? a[0].t : Infinity;
+    pbHist.set(hex, old.filter(q => q.t < first - 5e3).concat(a));
+  }
+  for (const [cs, r] of Object.entries(h.routes || {})) if (r && !r.none && !routes.has(cs)) routes.set(cs, { ok: true, ...r });
+}
+function pbSpan() { let o = Infinity; for (const a of pbHist.values()) if (a.length && a[0].t < o) o = a[0].t; return o === Infinity ? 0 : Date.now() - o; }
+function pbAt(T, speed) { // every aircraft's position at time T, interpolated
+  const out = [];
+  for (const [hex, a] of pbHist) {
+    if (!a.length || a[0].t > T || a[a.length - 1].t < T - 25e3) continue;
+    let i = a.length - 1; while (i > 0 && a[i].t > T) i--;
+    const p = a[i], q = a[Math.min(i + 1, a.length - 1)], back = a[Math.max(0, i - 1)];
+    const seg = q !== p ? [p, q] : [back, p];
+    const dtS = Math.max(1, (seg[1].t - seg[0].t) / 1000);
+    const f = q !== p ? clamp((T - p.t) / (q.t - p.t), 0, 1) : 0;
+    const lat = p.lat + (q.lat - p.lat) * f, lon = p.lon + (q.lon - p.lon) * f, ft = p.ft + (q.ft - p.ft) * f;
+    const A = toXZ(seg[0].lat, seg[0].lon), B = toXZ(seg[1].lat, seg[1].lon), d = Math.hypot(B.x - A.x, B.z - A.z);
+    const track = d > 0.01 ? ((Math.atan2(B.x - A.x, -(B.z - A.z)) * R2D) + 360) % 360 : 0;
+    const meta = a[a.length - 1].cs ? a[a.length - 1] : p;
+    const k = seg[1].k || 1; // the demo runs fast; report real-world speeds
+    out.push({ hex, cs: meta.cs, type: meta.type, reg: meta.reg, lat, lon, altFt: ft, gs: d / dtS * 3600 / k, track,
+      vr: (seg[1].ft - seg[0].ft) / dtS * 60 / k, ground: false, seen: 0, scale: (speed || 1e-6) * k, src: 'Playback' });
+  }
+  return out;
+}
+function pbSeed(T) { // trails leading up to T, for a jump in time
+  const out = new Map(), span = cfg.trailMin * 60e3;
+  for (const [hex, a] of pbHist) {
+    const pts = a.filter(q => q.t < T && T - q.t <= span).reverse();
+    if (pts.length) out.set(hex, pts.map(q => { const p = toXZ(q.lat, q.lon); return { x: p.x, z: p.z, ft: q.ft, age: (T - q.t) / 1000 }; }));
+  }
+  return out;
+}
+function pbShow(T) {
+  const seeds = pbSeed(T), recs = pbAt(T, replay.playing ? replay.speed : 0);
+  for (const r of recs) { const s = seeds.get(r.hex); if (s) r.seed = s; }
+  ingest(recs, performance.now());
+}
+function enterReplay(T, playing) {
+  const wasOn = replay.on;
+  replay.on = true; replay.t = T; if (playing != null) replay.playing = playing;
+  clearAll(); pbShow(T); pbUI(true);
+}
+function goLive() {
+  if (!replay.on) return;
+  replay.on = false; replay.playing = false;
+  clearAll();
+  const seeds = pbSeed(Date.now());
+  if (cfg.source === 'demo') { const recs = simRecords(); for (const r of recs) { const s = seeds.get(r.hex); if (s) r.seed = s; } ingest(recs, performance.now()); }
+  else { historyPendingSeeds = seeds; lastDataT = 0; poll(); }
+  pbUI(true);
+}
+let historyPendingSeeds = null;
+const pbEl = { bar: $('pb'), play: $('pbPlay'), slider: $('pbSlider'), time: $('pbTime'), speed: $('pbSpeed'), live: $('pbLive') };
+const ICON_PLAY = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 1.5h3.2v11H2.5zM8.3 1.5h3.2v11H8.3z"/></svg>';
+let pbIcon = '';
+function pbUI(force) {
+  const span = Math.min(PB_KEEP_MS, pbSpan());
+  const show = span > 45e3;
+  if (pbEl.bar.hidden === show) pbEl.bar.hidden = !show;
+  if (!show) return;
+  const min = -Math.floor(span / 1000);
+  if (+pbEl.slider.min !== min) pbEl.slider.min = String(min);
+  if (!pbDragging) pbEl.slider.value = String(replay.on ? Math.round((replay.t - Date.now()) / 1000) : 0);
+  const playingIcon = !replay.on || replay.playing;
+  const icon = playingIcon ? ICON_PAUSE : ICON_PLAY;
+  if (icon !== pbIcon) { pbEl.play.innerHTML = icon; pbIcon = icon; pbEl.play.setAttribute('aria-label', playingIcon ? 'Pause' : 'Play'); }
+  pbEl.live.classList.toggle('on', !replay.on);
+  if (replay.on) {
+    const ago = Math.max(0, Math.round((Date.now() - replay.t) / 1000));
+    const clock = new Date(replay.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    pbEl.time.innerHTML = `${clock}<small>${Math.floor(ago / 60)}:${String(ago % 60).padStart(2, '0')} ago</small>`;
+  } else pbEl.time.textContent = 'Live';
+}
+let pbDragging = false;
+pbEl.play.onclick = () => {
+  if (!replay.on) enterReplay(Date.now() - 1000, false);
+  else { replay.playing = !replay.playing; replay.acc = 1; }
+  pbUI(true);
+};
+pbEl.slider.addEventListener('input', () => {
+  pbDragging = true;
+  const v = +pbEl.slider.value;
+  if (v >= -2) { goLive(); return; }
+  enterReplay(Date.now() + v * 1000, replay.on ? replay.playing : false);
+});
+pbEl.slider.addEventListener('change', () => { pbDragging = false; pbUI(true); });
+pbEl.speed.value = String(replay.speed);
+pbEl.speed.onchange = () => { replay.speed = +pbEl.speed.value; replay.acc = 1; };
+pbEl.live.onclick = () => goLive();
+function pbTick(dt) {
+  if (!replay.on) return;
+  if (replay.playing) {
+    replay.t += dt * 1000 * replay.speed;
+    if (replay.t >= Date.now() - 1500) { goLive(); return; }
+  }
+  replay.acc += dt;
+  if (replay.acc >= 0.5) { replay.acc = 0; ingest(pbAt(replay.t, replay.playing ? replay.speed : 0), performance.now()); }
+}
+
 function ingest(recs, now) {
   const tSec = secs(now), seen = new Set(), corr = qnhCorrection(recs);
+  if (!replay.on) pbRecord(recs, corr);
   for (const r of recs) {
     if (!r || !r.hex || !isFinite(r.lat) || !isFinite(r.lon)) continue;
     if (cfg.hideLow && isLow(r, corr)) { const c = crafts.get(r.hex); if (c) c.die(tSec); continue; }
@@ -922,7 +1079,9 @@ function ingest(recs, now) {
     if (r.cs) wantRoute(r.cs);
   }
   lastCount = seen.size;
-  if (cfg.source !== 'demo') { // gone from the feed while low and descending: it has landed, so drop it now rather than after 45 s
+  if (replay.on) { // in playback, anything not in this moment is gone
+    for (const c of crafts.values()) if (!c.dying && !seen.has(c.hex)) c.die(tSec);
+  } else if (cfg.source !== 'demo') { // gone from the feed while low and descending: it has landed, so drop it now rather than after 45 s
     for (const c of crafts.values()) if (!c.dying && !seen.has(c.hex) && c.rec && (c.rec.altFt || 0) < 1500 && (c.rec.vr || 0) <= 0) c.die(tSec);
   }
   scoreRunways(now);
@@ -982,6 +1141,7 @@ let liveInterval = 0, lastDataT = 0, historyPending = null;
 async function fetchHistory() {
   try {
     const h = await getJSON(`${DATA_URL}/history.json`);
+    pbMergeServer(h);
     const base = h.t / 1000, out = new Map();
     for (const [hex, pts] of Object.entries(h.ac || {})) out.set(hex, pts.map(([dt, la, lo, alt]) => ({ t: base + dt, lat: la / 1e4, lon: lo / 1e4, ft: alt })));
     return out;
@@ -1013,7 +1173,11 @@ async function poll() {
   try {
     const recs = cfg.source === 'cloud' ? await fetchCloud() : cfg.source === 'freeflight' ? await fetchFreeFlight() : await fetchADSB();
     if (gen !== pollGen) return;
-    if (recs) ingest(recs, performance.now());
+    if (recs && replay.on) pbRecord(recs, qnhCorrection(recs));
+    else if (recs) {
+      if (historyPendingSeeds) { for (const r of recs) { const sd = historyPendingSeeds.get(r.hex); if (sd && !crafts.has(r.hex)) r.seed = sd; } historyPendingSeeds = null; }
+      ingest(recs, performance.now());
+    }
     failures = 0; lastOk = Date.now(); lastErr = ''; showBanner('');
   } catch (e) {
     if (gen !== pollGen) return;
@@ -1215,7 +1379,7 @@ function simStep(dt, now) {
   for (let i = sim.flights.length - 1; i >= 0; i--) {
     const f = sim.flights[i];
     f.s += Math.max(sample(f.P, f.s).kt, 20) / 3600 * dt * cfg.demoSpeed;
-    if (f.s >= f.P.total) { sim.flights.splice(i, 1); const c = crafts.get(f.hex); if (c) c.die(tSec); }
+    if (f.s >= f.P.total) { sim.flights.splice(i, 1); const c = !replay.on && crafts.get(f.hex); if (c) c.die(tSec); }
   }
   const count = (k, a) => sim.flights.filter(f => f.kind === k && f.apCode === a).length;
   for (const [code, spec] of Object.entries(DEMO)) {
@@ -1292,11 +1456,16 @@ bTags.onclick = () => {
 syncTagsBtn();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let flyHome = null;
-$('bHome').onclick = () => {
+function flyTo(p1) {
   following = false; renderDetail();
-  if (reduceMotion) { camera.position.copy(homeCam()); controls.target.copy(HOME_T); return; }
-  flyHome = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1: homeCam() };
-};
+  if (reduceMotion) { camera.position.copy(p1); controls.target.copy(HOME_T); return; }
+  flyHome = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1 };
+}
+let topView = false;
+function setTop(on) { topView = on; $('bTop').setAttribute('aria-pressed', String(on)); $('bTop').textContent = on ? '3D view' : 'Top view'; }
+$('bHome').onclick = () => { setTop(false); flyTo(homeCam()); };
+$('bTop').onclick = () => { setTop(!topView); flyTo(topView ? topCam() : homeCam()); };
+controls.addEventListener('start', () => { if (topView && !flyHome) setTop(false); });
 
 const settingsEl = $('settings'), bSettings = $('bSettings');
 function openSettings(on) {
@@ -1348,12 +1517,13 @@ $('sForm').addEventListener('submit', e => {
 $('bannerDemo').onclick = () => { cfg.source = 'demo'; store.set('cfg', cfg); startSource(); };
 function showBanner(text) { $('banner').hidden = !text; $('bannerText').textContent = text; }
 addEventListener('keydown', e => {
+  if (e.key === ' ' && !pbEl.bar.hidden && !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement?.tagName || '')) { e.preventDefault(); pbEl.play.click(); return; }
   if (e.key !== 'Escape') return;
-  if (!settingsEl.hidden) openSettings(false); else if (sel) select(null);
+  if (!settingsEl.hidden) openSettings(false); else if (sel) select(null); else if (replay.on) goLive();
 });
 
 function startSource() {
-  pollGen++; clearTimeout(pollTimer); clearAll(); showBanner('');
+  pollGen++; clearTimeout(pollTimer); replay.on = false; replay.playing = false; pbHist.clear(); clearAll(); showBanner('');
   failures = 0; lastErr = ''; lastOk = 0; lastCount = 0;
   for (const ap of APPROACHES) ap.score = 0;
   for (const k of Object.keys(rwyActive)) delete rwyActive[k];
@@ -1382,6 +1552,11 @@ const statusEl = $('status');
 function renderStatus() {
   const live = [...crafts.values()].filter(c => !c.dying && !c.hidden).length;
   let dot = '', text;
+  if (replay.on) {
+    const clock = new Date(replay.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    statusEl.innerHTML = `<span class="live"></span>${esc(`Playback at ${clock}, ${live} aircraft${replay.playing ? `, ${replay.speed}× speed` : ', paused'}`)}`;
+    return;
+  }
   if (cfg.source === 'demo') { dot = ''; text = `Demo traffic, ${live} aircraft${proxy || DATA_URL ? '' : ' · run server.py for live'}`; }
   else if (cfg.source === 'cloud') {
     if (!lastDataT) { dot = failures ? 'bad' : ''; text = failures ? 'Live feed isn’t answering' : 'Connecting to the live feed…'; }
@@ -1432,7 +1607,7 @@ function placeEl(el, p, shift, state) {
 }
 for (const s of staticLabels) s.state = { vis: true };
 
-let lastFrame = performance.now(), simAcc = 0, statusAcc = 1, sweepAcc = 0;
+let lastFrame = performance.now(), simAcc = 0, statusAcc = 1, sweepAcc = 0, pbAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
@@ -1440,17 +1615,18 @@ function frame(now) {
 
   if (cfg.source === 'demo') {
     simStep(dt, now); simAcc += dt;
-    if (simAcc >= 1) { simAcc = 0; ingest(simRecords(), now); }
+    if (simAcc >= 1) { simAcc = 0; if (replay.on) { const rs = simRecords(); pbRecord(rs, 0); } else ingest(simRecords(), now); }
   }
   for (const p of PHASES) { TRAIL_MATS[p].uniforms.uNow.value = tSec; TRAIL_MATS[p].uniforms.uSpan.value = span; }
 
+  pbTick(dt);
   for (const c of crafts.values()) c.tick(dt, now, tSec);
 
   sweepAcc += dt;
   if (sweepAcc > 1) {
     sweepAcc = 0;
     for (const [hex, c] of crafts) {
-      if (!c.dying && cfg.source !== 'demo' && now - c.lastSeen > 45000) c.die(tSec);
+      if (!c.dying && !replay.on && cfg.source !== 'demo' && now - c.lastSeen > 45000) c.die(tSec);
       if (c.dying && (tSec - c.diedAt > span || !c.pts.length)) { c.dispose(); crafts.delete(hex); }
     }
   }
@@ -1496,6 +1672,7 @@ function frame(now) {
 
   statusAcc += dt;
   if (statusAcc > 1) { statusAcc = 0; renderStatus(); if (sel) renderDetail(); }
+  pbAcc += dt; if (pbAcc > 0.25) { pbAcc = 0; pbUI(); }
 }
 
 /* ---------- boot ---------- */
