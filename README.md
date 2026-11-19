@@ -43,7 +43,7 @@ every aircraft within 40 nm. Ground traffic and anything below 50 ft is dropped 
    - `CNAME www` → `credibilllhen.github.io`
    When the certificate is ready, tick *Enforce HTTPS*.
 5. Push to `main`, or run both workflows from the *Actions* tab. The poller starts within a
-   minute of its first deploy. Check it at `https://whatsabove-poller.<your-subdomain>.workers.dev/status`.
+   minute of its first deploy. Check it by opening `https://data.whatsabove.nyc/live.json`: `t` is the time of the last poll.
 
 ## Settings
 
