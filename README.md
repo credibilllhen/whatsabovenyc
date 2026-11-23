@@ -60,6 +60,16 @@ goes quiet for 25 seconds, the poller tries the APIs itself again.
 
 It uses only the Python standard library and sends about 15 KB per update.
 
+**On a Raspberry Pi**, `relay/install-pi.sh` sets it up as a background service that starts on
+boot, uses at most 10% of one core and 64 MB, runs as a throwaway locked-down user, and reaches
+the data APIs only through Tor, so they never see your address (or anything naming the site).
+Copy your token to the Pi, then:
+
+    curl -fsSLO https://raw.githubusercontent.com/credibilllhen/whatsabovenyc/main/relay/install-pi.sh
+    sudo bash install-pi.sh ~/whatsabove-token
+
+Log: `journalctl -u whatsabove-relay -f`.
+
 ## Settings
 
 In `worker/wrangler.toml`:
