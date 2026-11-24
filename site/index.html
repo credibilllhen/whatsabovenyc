@@ -12,7 +12,7 @@
 :root{
   --water:#cddde7; --land:#e7ebd7; --shore:#93abba; --ink:#16232d; --muted:#546470;
   --runway:#2b3640; --ring:#2f5d9a; --apt:#962c6e;
-  --arr:#1c66cc; --dep:#c9481b; --thru:#4f5a66; --gnd:#88929b; --glide:#11846a;
+  --arr:#1c66cc; --dep:#c9481b; --thru:#4f5a66; --gnd:#88929b; --glide:#11846a; --gpath:#a3acb4;
   --panel:rgba(246,248,244,.94); --line:#bfcbd3; --halo:rgba(214,227,235,.95); --focus:#1c66cc;
   color-scheme:light;
   box-sizing:border-box;
@@ -21,7 +21,7 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --glide:#49d3a6;
+    --glide:#49d3a6; --gpath:#6f7d87;
     --water:#0a1720; --land:#172932; --shore:#2c4553; --ink:#d9e4ea; --muted:#8a9eab;
     --runway:#c7d3da; --ring:#5c8fd8; --apt:#de78bd;
     --arr:#5ca9ff; --dep:#ff8b55; --thru:#a7b2bb; --gnd:#66747e;
@@ -30,7 +30,7 @@
   }
 }
 :root[data-theme="dark"]{
-  --glide:#49d3a6;
+  --glide:#49d3a6; --gpath:#6f7d87;
   --water:#0a1720; --land:#172932; --shore:#2c4553; --ink:#d9e4ea; --muted:#8a9eab;
   --runway:#c7d3da; --ring:#5c8fd8; --apt:#de78bd;
   --arr:#5ca9ff; --dep:#ff8b55; --thru:#a7b2bb; --gnd:#66747e;
@@ -227,7 +227,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <span><i class="sw" style="background:var(--arr)"></i>Arriving</span>
   <span><i class="sw" style="background:var(--dep)"></i>Departing</span>
   <span><i class="sw" style="background:var(--thru)"></i>Passing through</span>
-  <span><i class="sw" style="background:var(--glide)"></i>Active approach</span>
+  <span><i class="sw" style="background:repeating-linear-gradient(90deg,var(--gpath) 0 4px,transparent 4px 7px)"></i>Active approach</span>
 </div>
 
 <div id="pb" role="group" aria-label="Playback of the last 30 minutes" hidden>
@@ -433,7 +433,7 @@ const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-30, 60
 
 const C = {};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-function readColors() { for (const k of ['water','land','shore','ink','muted','runway','ring','apt','arr','dep','thru','gnd','glide']) C[k] = new THREE.Color(css('--' + k) || '#888'); }
+function readColors() { for (const k of ['water','land','shore','ink','muted','runway','ring','apt','arr','dep','thru','gnd','glide','gpath']) C[k] = new THREE.Color(css('--' + k) || '#888'); }
 readColors();
 const isDark = () => C.water.getHSL({}).l < 0.4;
 
@@ -555,10 +555,10 @@ function projectOn(ap, x, z) {
 }
 const glideGroup = new THREE.Group(); scene.add(glideGroup); // scale.y follows altitude exaggeration
 const GM = {
-  curtain: new THREE.MeshBasicMaterial({ color: C.glide, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false }),
-  path: new THREE.MeshBasicMaterial({ color: C.glide, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }),
-  tick: new THREE.LineBasicMaterial({ color: C.glide, transparent: true, opacity: 0.35 }),
-  center: new THREE.LineDashedMaterial({ color: C.glide, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.75 }),
+  curtain: new THREE.MeshBasicMaterial({ color: C.gpath, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+  path: new THREE.MeshBasicMaterial({ color: C.gpath, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }),
+  tick: new THREE.LineBasicMaterial({ color: C.gpath, transparent: true, opacity: 0.2 }),
+  center: new THREE.LineDashedMaterial({ color: C.gpath, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.45 }),
 };
 const gv = new THREE.Vector3();
 // Drawn paths reach 30 nm. The coded data stops at 15 nm, so past that the outermost leg carries on
@@ -670,7 +670,7 @@ function buildGlide(line, ap, title, note, since) {
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1;
     const px = -dz / L * w, pz = dx / L * w, q = pts[i];
     rib.push(V(q.x + px, q.y, q.z + pz), V(q.x - px, q.y, q.z - pz));
-    if (i < n - 1) { const k = i * 2; ri.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    if (i < n - 1 && (pts[i].s % 1) < 0.5) { const k = i * 2; ri.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); } // hashed: half a mile on, half off
   }
   const rg = geo(rib); rg.setIndex(ri); g.add(new THREE.Mesh(rg, GM.path));
   const ticks = []; // a stalk every 2 nm along the path
@@ -1791,7 +1791,7 @@ function applyTheme() {
   M.water.color.copy(C.water); M.bay.color.copy(C.water); M.land.color.copy(C.land); M.shore.color.copy(C.shore);
   M.runway.color.copy(C.runway); M.aptRing.color.copy(C.apt); M.ring.color.copy(C.ring); M.drop.color.copy(C.muted); M.sel.color.copy(C.ink);
   scene.fog.color.copy(C.water); scene.background = C.water;
-  for (const m of Object.values(GM)) m.color.copy(C.glide);
+  for (const m of Object.values(GM)) m.color.copy(C.gpath);
   for (const p of PHASES) {
     MODEL_MATS[p].color.copy(C[p]); MODEL_MATS[p].emissive.copy(C[p]).multiplyScalar(isDark() ? 0.35 : 0.2);
     TRAIL_MATS[p].uniforms.uColor.value.copy(C[p]); TRAIL_MATS[p].uniforms.uOpacity.value = isDark() ? 0.6 : 0.5;
