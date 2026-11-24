@@ -75,7 +75,7 @@ body{background:var(--water);color:var(--ink);font:400 14px/1.4 'Barlow',system-
 #rwys .fl{font-size:12px;color:var(--muted)}
 
 #tools{position:fixed;top:0;right:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 0;display:flex;gap:6px}
-.tb{font:500 13px/1 'Barlow',system-ui,sans-serif;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 11px;min-height:34px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.tb{white-space:nowrap;font:500 13px/1 'Barlow',system-ui,sans-serif;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 11px;min-height:34px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .tb:hover{border-color:var(--muted)}
 .tb.primary{background:var(--ink);color:var(--water);border-color:var(--ink)}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -135,6 +135,31 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .actions{display:flex;gap:8px;margin-top:22px}
 .actions .tb{flex:1}
 
+#filters{z-index:5;position:fixed;top:calc(env(safe-area-inset-top,0px) + 56px);right:12px;width:320px;max-height:calc(100vh - env(safe-area-inset-top,0px) - 150px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#filters h2{margin:0;font:700 22px/1 'Barlow Condensed','Arial Narrow',sans-serif}
+#filters h3{margin:16px 0 7px;font-size:14px;font-weight:600}
+#filters h3 label{color:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 13px/1 'Barlow',system-ui,sans-serif;display:inline-flex;align-items:center;gap:7px;padding:8px 11px;min-height:34px;border-radius:17px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.chip .sw{margin:0;opacity:.35}
+.chip[aria-pressed="true"]{color:var(--ink);border-color:var(--ink);background:var(--halo)}
+.chip[aria-pressed="true"] .sw{opacity:1}
+#filters select,#filters input[type=search]{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 9px}
+#filters label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:10px 0 0;cursor:pointer}
+#filters label.check input{width:17px;height:17px;accent-color:var(--ink);margin:1px 0 0;flex:none}
+#filters label.check small{display:block;color:var(--muted);font-size:12px}
+.link{background:none;border:0;padding:4px 0;color:var(--focus);font:500 13px 'Barlow',system-ui,sans-serif;cursor:pointer}
+.alist{margin-top:6px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.alist label{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:7px 9px;font-size:13.5px;cursor:pointer;border-top:1px solid var(--line)}
+.alist label:first-child{border-top:0}
+.alist label:hover{background:var(--halo)}
+.alist input{width:16px;height:16px;margin:0;accent-color:var(--ink)}
+.alist .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.alist .code{color:var(--muted);font-size:12px;margin-left:4px}
+.alist .empty{padding:9px;color:var(--muted);font-size:13px}
+#bFilters[data-n]:not([data-n="0"])::after{content:attr(data-n);display:inline-block;margin-left:6px;min-width:17px;padding:2px 5px;border-radius:9px;background:var(--ink);color:var(--water);font-size:11px;line-height:13px;text-align:center}
+#pbRange{flex:none;font:inherit;font-size:13px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 4px}
 #banner{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);width:min(520px,calc(100vw - 24px));background:var(--panel);border:1px solid var(--dep);border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:center}
 #banner p{margin:0;font-size:13.5px;flex:1}
 [hidden]{display:none!important}
@@ -149,7 +174,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   #pbSpeed{display:none}
   #pbTime{min-width:64px}
   #settings{width:100%;border-left:0}
-  .tb{padding:9px 9px}
+  #filters{left:0;right:0;top:auto;bottom:0;width:auto;max-height:75vh;border-radius:12px 12px 0 0;border-width:1px 0 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 16px)}
+  #pbRange{max-width:64px}
+  .tb{padding:8px 7px;font-size:12.5px}
+  #tools{gap:4px;padding-left:8px;padding-right:8px}
 }
 </style>
 </head>
@@ -167,8 +195,33 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <button class="tb" id="bTags" type="button">Tags: full</button>
   <button class="tb" id="bTop" type="button" aria-pressed="false">Top view</button>
   <button class="tb" id="bHome" type="button">Recenter</button>
+  <button class="tb" id="bFilters" type="button" aria-expanded="false" aria-controls="filters" data-n="0">Filters</button>
   <button class="tb" id="bSettings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
 </nav>
+
+<section id="filters" aria-label="Filters" hidden>
+  <div class="row"><h2>Filters</h2><button class="x" id="fClose" type="button" aria-label="Close filters">✕</button></div>
+  <h3>Traffic</h3>
+  <div class="chips" role="group" aria-label="Traffic">
+    <button class="chip" type="button" data-ph="arr" aria-pressed="true"><i class="sw" style="background:var(--arr)"></i>Arriving</button>
+    <button class="chip" type="button" data-ph="dep" aria-pressed="true"><i class="sw" style="background:var(--dep)"></i>Departing</button>
+    <button class="chip" type="button" data-ph="thru" aria-pressed="true"><i class="sw" style="background:var(--thru)"></i>Passing through</button>
+  </div>
+  <h3><label for="fApt">Airport</label></h3>
+  <select id="fApt">
+    <option value="ALL">All three: EWR, JFK and LGA</option>
+    <option value="EWR">Newark (EWR)</option>
+    <option value="JFK">Kennedy (JFK)</option>
+    <option value="LGA">LaGuardia (LGA)</option>
+  </select>
+  <label class="check"><input type="checkbox" id="fArea"><span>Area airports<small>Teterboro, Westchester, Islip, Republic and Morristown</small></span></label>
+  <p class="note">The airport choice applies to arrivals and departures, and to the approaches shown. Passing-through traffic follows its own switch.</p>
+  <div class="row"><h3>Airlines</h3><button class="link" id="fAllAir" type="button">Show all</button></div>
+  <input type="search" id="fAirSearch" placeholder="Search airlines" aria-label="Search airlines" autocomplete="off">
+  <p class="note" id="fAirNote"></p>
+  <div class="alist" id="fAir" role="group" aria-label="Airlines"></div>
+  <div class="actions"><button class="tb" id="fReset" type="button">Reset filters</button></div>
+</section>
 
 <div id="legend" aria-label="Legend">
   <span><i class="sw" style="background:var(--arr)"></i>Arriving</span>
@@ -181,7 +234,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <button id="pbPlay" type="button" aria-label="Pause"></button>
   <input type="range" id="pbSlider" min="-1800" max="0" step="1" value="0" aria-label="Time, up to 30 minutes ago">
   <span id="pbTime">Live</span>
-  <select id="pbSpeed" aria-label="Playback speed"><option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="60">60×</option></select>
+  <select id="pbRange" aria-label="How far back the slider reaches" hidden><option value="1800">30 min</option><option value="7200">2 h</option><option value="21600">6 h</option><option value="86400">24 h</option><option value="0">All</option></select>
+  <select id="pbSpeed" aria-label="Playback speed"><option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="60">60×</option><option value="300">300×</option></select>
   <button class="tb" id="pbLive" type="button"><span class="dot"></span>Live</button>
 </div>
 
@@ -284,6 +338,9 @@ const cfg = Object.assign({
 }, savedCfg || {});
 if (cfg.source === 'airplaneslive') cfg.source = 'demo'; // retired: airplanes.live now needs approval and blocks browser calls
 cfg.v = 3;
+// Traffic filters, kept per visitor. airlines: ICAO codes to show ('_' = private and other); empty shows all.
+const F = Object.assign({ arr: true, dep: true, thru: true, apt: 'ALL', area: true, airlines: [] }, store.get('filters', {}));
+const BIG3 = ['EWR', 'JFK', 'LGA'];
 let proxy = null; // set when served by server.py
 // The shared feed: live.json and history.json, written by the Cloudflare poller.
 // ?data=<url> overrides it, for testing against a local Worker.
@@ -504,11 +561,20 @@ const GM = {
   center: new THREE.LineDashedMaterial({ color: C.glide, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.75 }),
 };
 const gv = new THREE.Vector3();
-function samplePath(ap, step) { // points every `step` nm from the threshold out to 15 nm
-  const out = [], n = ap.xz.length;
-  for (let s = 0; s <= ap.s[0] + 1e-6; s += step) {
-    let i = n - 2; while (i > 0 && ap.s[i] < s) i--;
-    const a = ap.xz[i], b = ap.xz[i + 1], seg = ap.s[i] - ap.s[i + 1] || 1e-9, f = (ap.s[i] - s) / seg;
+// Drawn paths reach 30 nm. The coded data stops at 15 nm, so past that the outermost leg carries on
+// straight; in practice arrivals join from vectors and arrival routes out there.
+const PATH_NM = 30;
+function extOf(ap) {
+  if (ap.ext) return ap.ext;
+  const xz = ap.xz.slice(), a = xz[0], b = xz[1], L = Math.hypot(a.x - b.x, a.z - b.z) || 1, more = PATH_NM - ap.s[0];
+  if (more > 0.01) xz.unshift({ x: a.x + (a.x - b.x) / L * more, z: a.z + (a.z - b.z) / L * more });
+  const e = { xz }; measure(e); return (ap.ext = e);
+}
+function samplePath(ap, step) { // points every `step` nm from the threshold out to PATH_NM
+  const P = extOf(ap), out = [], n = P.xz.length;
+  for (let s = 0; s <= P.s[0] + 1e-6; s += step) {
+    let i = n - 2; while (i > 0 && P.s[i] < s) i--;
+    const a = P.xz[i], b = P.xz[i + 1], seg = P.s[i] - P.s[i + 1] || 1e-9, f = (P.s[i] - s) / seg;
     out.push({ x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f, s });
   }
   return out;
@@ -582,11 +648,16 @@ function lineFor(ap, fp) {
   }
   return line;
 }
-function buildGlide(line, ap, title, note) {
+const PAGE_T0 = Date.now();
+const clockOf = t => { const d = new Date(t), today = new Date().toDateString() === d.toDateString();
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + (today ? '' : ' ' + d.toLocaleDateString([], { weekday: 'short' })); };
+const agoOf = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+const sinceText = (t, known) => t ? `${known ? 'since' : 'since before'} ${clockOf(t)}` : '';
+function buildGlide(line, ap, title, note, since) {
   // height comes from distance flown along the path, so a curved approach descends along its curve
   let acc = 0;
   const pts = line.map((q, i) => { if (i) acc += Math.hypot(q.x - line[i - 1].x, q.z - line[i - 1].z); return { x: q.x, z: q.z, s: acc, y: altAt(ap, acc) }; })
-    .filter(q => q.s <= 15.05);
+    .filter(q => q.s <= PATH_NM + 0.05);
   const g = new THREE.Group(), n = pts.length;
   const geo = arr => new THREE.BufferGeometry().setFromPoints(arr);
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -608,7 +679,7 @@ function buildGlide(line, ap, title, note) {
   const cl = new THREE.Line(geo(pts.map(q => V(q.x, 0.01, q.z))), GM.center); cl.computeLineDistances(); g.add(cl);
   glideGroup.add(g);
   const el = document.createElement('div'); el.className = 'glbl';
-  el.innerHTML = `<b>${esc(ap.a)} ${esc(ap.rwy)}</b>${esc(title)}<br>${ap.gpa.toFixed(2)}° · ${esc(note)}`;
+  el.innerHTML = `<b>${esc(ap.a)} ${esc(ap.rwy)}</b>${esc(title)}<br>${ap.gpa.toFixed(2)}° · ${esc(note)}` + (since ? `<br>In use ${esc(since)}` : '');
   tagLayer.appendChild(el);
   const top = pts[n - 1];
   return { g, el, top: { x: top.x, y: top.y, z: top.z }, state: { vis: true } };
@@ -620,7 +691,7 @@ function dropShown(rk) {
   delete SHOWN[rk];
 }
 let lastScoreT = 0;
-const rwyActive = {};
+const rwyActive = {}, rwySince = {};
 function scoreRunways(now) {
   if (replay.on) return; // approaches reflect now, not the moment being replayed
   if (cfg.source === 'cloud') return; // the poller does this for everyone
@@ -658,7 +729,7 @@ function applyServerActive(list) {
       const pts = it.flown.map(([x, z], i, arr) => { if (i) acc += Math.hypot(x - arr[i - 1][0], z - arr[i - 1][1]); return { x, z, s: acc }; });
       fp = { pts, n: it.n, sig: it.sig };
     }
-    want[ap.rk] = { ap, fp, visual: it.visual, title: it.title, sig: it.sig };
+    want[ap.rk] = { ap, fp, visual: it.visual, title: it.title, sig: it.sig + '|' + (it.since || ''), since: it.since || 0, known: !!it.sinceKnown };
   }
   serverWant = want;
   applyWant(want);
@@ -676,20 +747,24 @@ function updateActive() {
   const want = {};
   for (const [rk, g] of Object.entries(rw)) {
     rwyActive[rk] = rwyActive[rk] ? g.total >= 0.8 : (g.total >= 2 && g.total >= top[g.a] * 0.3);
-    if (!rwyActive[rk]) continue;
+    if (!rwyActive[rk]) { delete rwySince[rk]; continue; }
+    if (!rwySince[rk]) rwySince[rk] = [Date.now(), Date.now() - PAGE_T0 > 15 * 60e3];
     // landings that matched no published path: a visual approach, named as such
     const visual = g.land >= 2 && g.sum < g.land * 0.35;
     const ap = visual || g.sum < 0.5 ? g.prio : g.best, fp = flownPath(rk, now);
     want[rk] = { ap, fp, visual, title: visual ? `Visual approach RWY ${g.rwy}` : aprLabel(ap),
-      sig: (visual ? 'V' : ap.id) + '|' + (fp ? fp.sig : 'pub') };
+      sig: (visual ? 'V' : ap.id) + '|' + (fp ? fp.sig : 'pub') + '|' + rwySince[rk][0], since: rwySince[rk][0], known: rwySince[rk][1] };
   }
   applyWant(want);
 }
+let lastWant = {};
 function applyWant(want) {
-  for (const rk of Object.keys(SHOWN)) if (!cfg.glide || !want[rk] || want[rk].sig !== SHOWN[rk].sig) dropShown(rk);
-  if (cfg.glide) for (const [rk, wv] of Object.entries(want)) if (!SHOWN[rk]) {
+  lastWant = want;
+  const aptOk = wv => F.apt === 'ALL' || wv.ap.a === F.apt;
+  for (const rk of Object.keys(SHOWN)) if (!cfg.glide || !want[rk] || want[rk].sig !== SHOWN[rk].sig || !aptOk(want[rk])) dropShown(rk);
+  if (cfg.glide) for (const [rk, wv] of Object.entries(want)) if (!SHOWN[rk] && aptOk(wv)) {
     const note = wv.fp ? `path flown by the last ${wv.fp.n} arrivals` : 'published path';
-    SHOWN[rk] = Object.assign(buildGlide(lineFor(wv.ap, wv.fp), wv.ap, wv.title, note), { sig: wv.sig });
+    SHOWN[rk] = Object.assign(buildGlide(lineFor(wv.ap, wv.fp), wv.ap, wv.title, note, sinceText(wv.since, wv.known)), { sig: wv.sig });
   }
   renderRwys(want);
 }
@@ -699,8 +774,13 @@ function renderRwys(want) {
   const by = {};
   for (const [rk, wv] of Object.entries(want || {})) (by[wv.ap.a] = by[wv.ap.a] || []).push(wv);
   el.hidden = false;
-  const rows = ['JFK', 'LGA', 'EWR'].filter(a => by[a]).map(a =>
-    `<div><b>${a}</b> ${by[a].sort((x, y) => x.ap.rwy.localeCompare(y.ap.rwy)).map(wv => esc(wv.title) + (wv.fp ? ' <span class="fl">as flown</span>' : '')).join(' &amp; ')}</div>`);
+  // the airport's current setup began when the last of its runways in use came into use
+  const changed = list => list.reduce((m, wv) => (wv.since > (m ? m.since : 0) ? wv : m), null);
+  const rows = ['JFK', 'LGA', 'EWR'].filter(a => by[a] && (F.apt === 'ALL' || F.apt === a)).map(a => {
+    const c = changed(by[a]);
+    const when = c ? ` <span class="fl">· ${esc(sinceText(c.since, c.known))}${c.known ? ` (${agoOf(c.since)})` : ''}</span>` : '';
+    return `<div><b>${a}</b> ${by[a].sort((x, y) => x.ap.rwy.localeCompare(y.ap.rwy)).map(wv => esc(wv.title) + (wv.fp ? ' <span class="fl">as flown</span>' : '')).join(' &amp; ')}${when}</div>`;
+  });
   el.innerHTML = rows.length ? rows.join('') : 'Watching arrivals to find the active approaches…';
 }
 
@@ -801,7 +881,7 @@ class Craft {
       if (this.init) { this.pts.length = 0; this.full = true; }
       this.pos.set(tg.x, 0, tg.z); this.alt = tg.a; this.hdg = tr; this.init = true;
     }
-    this.setPhase(); this.renderTag();
+    this.setPhase(); this.fOk = filterOk(this); this.renderTag();
   }
   seedTrail(seed, tSec) {
     for (let i = seed.length - 1; i >= 0; i--) { const s = seed[i]; this.pts.push({ x: s.x, z: s.z, a: s.ft / FT_PER_NM, t: tSec - s.age }); }
@@ -852,7 +932,7 @@ class Craft {
   tick(dt, now, tSec) {
     if (this.dying || !this.fix) return;
     const r = this.rec;
-    const hide = cfg.ceiling < 45000 && !r.ground && (r.altFt || 0) > cfg.ceiling;
+    const hide = (cfg.ceiling < 45000 && !r.ground && (r.altFt || 0) > cfg.ceiling) || this.fOk === false;
     if (hide !== this.hidden) { this.hidden = hide; this.model.visible = !hide; this.trail.visible = !hide; this.drop.visible = !hide; if (hide && sel === this) select(null); }
     const tg = this.target(now), k = 1 - Math.exp(-dt * 2.2);
     this.pos.x += (tg.x - this.pos.x) * k; this.pos.z += (tg.z - this.pos.z) * k; this.alt += (tg.a - this.alt) * k;
@@ -910,6 +990,28 @@ class Craft {
   }
 }
 
+/* ---------- filters ---------- */
+const airNames = {}; // airline names learned from routes, for codes not in AIRLINES
+const airlineKeyOf = r => { const m = /^([A-Z]{3})\d/.exec((r && r.cs) || ''); return m ? m[1] : '_'; };
+const airlineLabelOf = k => k === '_' ? 'Private and other' : (AIRLINES[k] ? AIRLINES[k][1] : airNames[k] || k);
+function filterOk(c) {
+  const r = c.rec; if (!r) return true;
+  const ph = c.phase;
+  if ((ph === 'arr' && !F.arr) || (ph === 'dep' && !F.dep) || (ph === 'thru' && !F.thru)) return false;
+  if (ph === 'gnd' && !(F.arr && F.dep && F.thru)) return false;
+  const rt = routeFor(r.cs), key = airlineKeyOf(r);
+  if (rt && rt.airline && key !== '_' && !AIRLINES[key]) airNames[key] = rt.airline;
+  if (ph === 'arr' || ph === 'dep') { // the airport it is arriving at or leaving from
+    const code = rt ? normCode(ph === 'arr' ? rt.dest : rt.orig) : '';
+    if (code && LOCAL.has(code)) {
+      if (BIG3.includes(code) ? (F.apt !== 'ALL' && F.apt !== code) : !F.area) return false;
+    } else if (F.apt !== 'ALL') return false; // route unknown: can't tell which airport
+  }
+  if (F.airlines.length && !F.airlines.includes(key)) return false;
+  return true;
+}
+const filterCount = () => (F.arr && F.dep && F.thru ? 0 : 1) + (F.apt !== 'ALL' ? 1 : 0) + (F.area ? 0 : 1) + (F.airlines.length ? 1 : 0);
+
 function altBlock(r) {
   const gs = Math.round(r.gs || 0);
   if (r.ground) return `GND  ${gs} kt`;
@@ -956,19 +1058,48 @@ function pbRecord(recs, corr) {
     if (last && t - last.t < PB_EVERY_MS) continue;
     a.push({ t, lat: r.lat, lon: r.lon, ft: r.altFt || 0, cs: r.cs || '', type: r.type || '', reg: r.reg || '', k: r.scale || 1 }); // k: demo fast-forward
   }
-  if (wall - pbPrune > 30e3) {
+  if (wall - pbPrune > 30e3) { // keep the last 30 minutes, and around the moment being played back
     pbPrune = wall;
-    for (const [hex, a] of pbHist) { while (a.length && wall - a[0].t > PB_KEEP_MS) a.shift(); if (!a.length) pbHist.delete(hex); }
+    const keep = Math.min(wall - PB_KEEP_MS, replay.on ? replay.t - PB_KEEP_MS : Infinity);
+    for (const [hex, a] of pbHist) { while (a.length && a[0].t < keep) a.shift(); if (!a.length) pbHist.delete(hex); }
+    for (const t0 of segLoaded.keys()) if (t0 + SEG_MS < keep) segLoaded.delete(t0);
   }
 }
-function pbMergeServer(h) { // positions from before this page opened
+function pbMergeServer(h) { // positions from the poller: history.json (last 30 min) or a 10-minute segment
   const meta = h.meta || {};
   for (const [hex, pts] of Object.entries(h.ac || {})) {
-    const m = meta[hex] || [], old = pts.map(([dt, la, lo, alt]) => ({ t: h.t + dt * 1000, lat: la / 1e4, lon: lo / 1e4, ft: alt, cs: m[0] || '', type: m[1] || '', reg: m[2] || '' }));
-    const a = pbHist.get(hex) || [], first = a.length ? a[0].t : Infinity;
-    pbHist.set(hex, old.filter(q => q.t < first - 5e3).concat(a));
+    const m = meta[hex] || [], add = pts.map(([dt, la, lo, alt]) => ({ t: h.t + dt * 1000, lat: la / 1e4, lon: lo / 1e4, ft: alt, cs: m[0] || '', type: m[1] || '', reg: m[2] || '' }));
+    const a = pbHist.get(hex);
+    if (!a || !a.length) { pbHist.set(hex, add); continue; }
+    const all = a.concat(add).sort((x, y) => x.t - y.t), out = [];
+    for (const q of all) { const L = out[out.length - 1]; if (L && q.t - L.t < 5e3) continue; out.push(q); }
+    pbHist.set(hex, out);
   }
   for (const [cs, r] of Object.entries(h.routes || {})) if (r && !r.none && !routes.has(cs)) routes.set(cs, { ok: true, ...r });
+}
+/* Older than 30 minutes, positions come from the poller's 10-minute segments (seg/<start>.json),
+   fetched as playback reaches them. live.json says where they begin (histFrom). */
+let histFrom = 0, SEG_MS = 600e3, segTimer = null;
+const segLoaded = new Map(); // segment start -> true, or a promise while loading
+function ensureSegs(T) {
+  if (cfg.source !== 'cloud' || !DATA_URL || !histFrom) return Promise.resolve(false);
+  const from = Math.max(Math.floor((T - cfg.trailMin * 60e3 - 60e3) / SEG_MS), Math.floor(histFrom / SEG_MS)) * SEG_MS;
+  const to = Math.floor((T + 5 * 60e3) / SEG_MS) * SEG_MS, jobs = [];
+  for (let t0 = from; t0 <= to; t0 += SEG_MS) {
+    if (t0 >= Date.now() - PB_KEEP_MS) break; // the last 30 minutes come from history.json and the live feed
+    const st = segLoaded.get(t0);
+    if (st === true) continue;
+    if (st) { jobs.push(st); continue; }
+    const pr = fetch(`${DATA_URL}/seg/${t0 / 1000}.json`).then(r => r.ok ? r.json() : null)
+      .then(h => { segLoaded.set(t0, true); if (h) pbMergeServer(h); return !!h; })
+      .catch(() => { segLoaded.delete(t0); return false; });
+    segLoaded.set(t0, pr); jobs.push(pr);
+  }
+  return jobs.length ? Promise.all(jobs).then(r => r.some(Boolean)) : Promise.resolve(false);
+}
+function segsFor(T, wait) { // load what playback at T needs, then redraw that moment
+  clearTimeout(segTimer);
+  segTimer = setTimeout(() => ensureSegs(T).then(got => { if (got && replay.on) { const s0 = sel && sel.hex; clearAll(); pbShow(replay.t); if (s0 && crafts.get(s0)) select(crafts.get(s0)); } }), wait);
 }
 function pbSpan() { let o = Infinity; for (const a of pbHist.values()) if (a.length && a[0].t < o) o = a[0].t; return o === Infinity ? 0 : Date.now() - o; }
 function pbAt(T, speed) { // every aircraft's position at time T, interpolated
@@ -1007,6 +1138,7 @@ function enterReplay(T, playing) {
   const wasOn = replay.on;
   replay.on = true; replay.t = T; if (playing != null) replay.playing = playing;
   clearAll(); pbShow(T); pbUI(true);
+  segsFor(T, 150);
 }
 function goLive() {
   if (!replay.on) return;
@@ -1018,15 +1150,31 @@ function goLive() {
   pbUI(true);
 }
 let historyPendingSeeds = null;
-const pbEl = { bar: $('pb'), play: $('pbPlay'), slider: $('pbSlider'), time: $('pbTime'), speed: $('pbSpeed'), live: $('pbLive') };
+const pbEl = { bar: $('pb'), play: $('pbPlay'), slider: $('pbSlider'), time: $('pbTime'), speed: $('pbSpeed'), live: $('pbLive'), range: $('pbRange') };
+pbEl.range.value = String(store.get('pbRange', 1800));
+if (!pbEl.range.value) pbEl.range.value = '1800';
+pbEl.range.onchange = () => {
+  store.set('pbRange', +pbEl.range.value);
+  if (replay.on && replay.t < Date.now() - pbRangeMs()) goLive();
+  pbUI(true);
+};
+function pbRangeMs() { // how far back the slider reaches
+  const own = Math.min(PB_KEEP_MS, pbSpan());
+  const avail = cfg.source === 'cloud' && histFrom ? Date.now() - histFrom : 0;
+  const want = +pbEl.range.value ? +pbEl.range.value * 1000 : Infinity;
+  return Math.max(own, Math.min(avail, want));
+}
 const ICON_PLAY = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 1.5h3.2v11H2.5zM8.3 1.5h3.2v11H8.3z"/></svg>';
 let pbIcon = '';
 function pbUI(force) {
-  const span = Math.min(PB_KEEP_MS, pbSpan());
+  const span = pbRangeMs();
   const show = span > 45e3;
   if (pbEl.bar.hidden === show) pbEl.bar.hidden = !show;
   if (!show) return;
+  const avail = cfg.source === 'cloud' && histFrom ? Date.now() - histFrom : 0, many = avail > PB_KEEP_MS + 60e3;
+  if (pbEl.range.hidden === many) pbEl.range.hidden = !many;
+  if (many && force) for (const o of pbEl.range.options) o.disabled = +o.value > 1800 && +o.value * 1000 > avail + SEG_MS;
   const min = -Math.floor(span / 1000);
   if (+pbEl.slider.min !== min) pbEl.slider.min = String(min);
   if (!pbDragging) pbEl.slider.value = String(replay.on ? Math.round((replay.t - Date.now()) / 1000) : 0);
@@ -1035,9 +1183,11 @@ function pbUI(force) {
   if (icon !== pbIcon) { pbEl.play.innerHTML = icon; pbIcon = icon; pbEl.play.setAttribute('aria-label', playingIcon ? 'Pause' : 'Play'); }
   pbEl.live.classList.toggle('on', !replay.on);
   if (replay.on) {
-    const ago = Math.max(0, Math.round((Date.now() - replay.t) / 1000));
-    const clock = new Date(replay.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-    pbEl.time.innerHTML = `${clock}<small>${Math.floor(ago / 60)}:${String(ago % 60).padStart(2, '0')} ago</small>`;
+    const ago = Math.max(0, Math.round((Date.now() - replay.t) / 1000)), d = new Date(replay.t);
+    const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + (d.toDateString() === new Date().toDateString() ? '' : ' ' + d.toLocaleDateString([], { weekday: 'short' }));
+    const p2 = n => String(n).padStart(2, '0');
+    const agoTxt = ago >= 3600 ? `${Math.floor(ago / 3600)}:${p2(Math.floor(ago / 60) % 60)}:${p2(ago % 60)}` : `${Math.floor(ago / 60)}:${p2(ago % 60)}`;
+    pbEl.time.innerHTML = `${esc(clock)}<small>${agoTxt} ago</small>`;
   } else pbEl.time.textContent = 'Live';
 }
 let pbDragging = false;
@@ -1064,6 +1214,8 @@ function pbTick(dt) {
   }
   replay.acc += dt;
   if (replay.acc >= 0.5) { replay.acc = 0; ingest(pbAt(replay.t, replay.playing ? replay.speed : 0), performance.now()); }
+  replay.pre = (replay.pre || 0) + dt;
+  if (replay.playing && replay.pre > 2) { replay.pre = 0; ensureSegs(replay.t + Math.min(SEG_MS, replay.speed * 60e3)); } // fetch ahead
 }
 
 function ingest(recs, now) {
@@ -1151,6 +1303,8 @@ async function fetchCloud() {
   const j = await getJSON(`${DATA_URL}/live.json`);
   if (j.t && j.t === lastDataT) return null; // same snapshot as last time
   lastDataT = j.t || Date.now(); liveInterval = j.interval || 10;
+  if (j.histFrom) histFrom = j.histFrom;
+  if (j.seg) SEG_MS = j.seg * 1000;
   const age = Math.max(0, (Date.now() - lastDataT) / 1000), nowSec = Date.now() / 1000;
   const recs = (j.ac || []).map(a => {
     if (a.orig || a.dest) routes.set(a.cs, { ok: true, orig: a.orig, dest: a.dest, origName: a.origName, destName: a.destName, airline: a.airline, airlineIata: a.airlineIata });
@@ -1467,9 +1621,61 @@ $('bHome').onclick = () => { setTop(false); flyTo(homeCam()); };
 $('bTop').onclick = () => { setTop(!topView); flyTo(topView ? topCam() : homeCam()); };
 controls.addEventListener('start', () => { if (topView && !flyHome) setTop(false); });
 
+const filtersEl = $('filters'), bFilters = $('bFilters'), fAir = $('fAir');
+function openFilters(on) {
+  filtersEl.hidden = !on; bFilters.setAttribute('aria-expanded', String(on));
+  if (on) { openSettings(false); syncFilterUI(); renderAirlines(true); }
+}
+bFilters.onclick = () => openFilters(filtersEl.hidden);
+$('fClose').onclick = () => openFilters(false);
+function syncFilterUI() {
+  for (const b of filtersEl.querySelectorAll('.chip')) b.setAttribute('aria-pressed', String(!!F[b.dataset.ph]));
+  $('fApt').value = F.apt; $('fArea').checked = F.area;
+  bFilters.dataset.n = String(filterCount());
+  bFilters.setAttribute('aria-label', filterCount() ? `Filters, ${filterCount()} on` : 'Filters');
+  $('fAirNote').textContent = F.airlines.length ? `Showing ${F.airlines.length === 1 ? 'one airline' : F.airlines.length + ' airlines'} only.` : 'Showing all airlines. Tick airlines to show only those.';
+}
+function filtersChanged() {
+  store.set('filters', F);
+  for (const c of crafts.values()) c.fOk = filterOk(c);
+  syncFilterUI(); applyWant(lastWant); renderStatus();
+}
+function renderAirlines(full) {
+  if (filtersEl.hidden) return;
+  const counts = {};
+  for (const c of crafts.values()) if (!c.dying && c.rec) { const k = airlineKeyOf(c.rec); counts[k] = (counts[k] || 0) + 1; }
+  for (const k of F.airlines) if (!(k in counts)) counts[k] = 0;
+  const q = $('fAirSearch').value.trim().toLowerCase();
+  const keys = Object.keys(counts).filter(k => !q || airlineLabelOf(k).toLowerCase().includes(q) || k.toLowerCase() === q || ((AIRLINES[k] || [])[0] || '').toLowerCase() === q);
+  const sig = keys.slice().sort().join();
+  if (full || sig !== fAir.dataset.keys) {
+    keys.sort((a, b) => (F.airlines.includes(b) - F.airlines.includes(a)) || counts[b] - counts[a] || airlineLabelOf(a).localeCompare(airlineLabelOf(b)));
+    const focusK = document.activeElement && fAir.contains(document.activeElement) ? document.activeElement.dataset.k : null;
+    fAir.innerHTML = keys.map(k => {
+      const iata = k !== '_' && AIRLINES[k] && AIRLINES[k][0];
+      return `<label><input type="checkbox" data-k="${esc(k)}"${F.airlines.includes(k) ? ' checked' : ''}><span>${esc(airlineLabelOf(k))}${iata ? `<span class="code">${esc(iata)}</span>` : ''}</span><span class="n" data-n="${esc(k)}">${counts[k]}</span></label>`;
+    }).join('') || '<div class="empty">No airlines match.</div>';
+    fAir.dataset.keys = sig;
+    if (focusK) fAir.querySelector(`input[data-k="${CSS.escape(focusK)}"]`)?.focus();
+  } else for (const el of fAir.querySelectorAll('.n')) el.textContent = counts[el.dataset.n] ?? 0;
+}
+for (const b of filtersEl.querySelectorAll('.chip')) b.onclick = () => { F[b.dataset.ph] = !F[b.dataset.ph]; filtersChanged(); };
+$('fApt').onchange = e => { F.apt = e.target.value; filtersChanged(); };
+$('fArea').onchange = e => { F.area = e.target.checked; filtersChanged(); };
+$('fAirSearch').addEventListener('input', () => renderAirlines(true));
+fAir.addEventListener('change', e => {
+  const k = e.target.dataset && e.target.dataset.k; if (k == null) return;
+  const set = new Set(F.airlines); if (e.target.checked) set.add(k); else set.delete(k);
+  F.airlines = [...set]; filtersChanged();
+});
+$('fAllAir').onclick = () => { F.airlines = []; filtersChanged(); renderAirlines(true); };
+$('fReset').onclick = () => { Object.assign(F, { arr: true, dep: true, thru: true, apt: 'ALL', area: true, airlines: [] }); $('fAirSearch').value = ''; filtersChanged(); renderAirlines(true); };
+syncFilterUI();
+
 const settingsEl = $('settings'), bSettings = $('bSettings');
 function openSettings(on) {
   settingsEl.hidden = !on; bSettings.setAttribute('aria-expanded', String(on));
+  if (on) openFilters(false);
   if (on) { fillForm(); settingsEl.querySelector('input[name=source]:checked')?.focus(); }
 }
 bSettings.onclick = () => openSettings(settingsEl.hidden);
@@ -1519,7 +1725,7 @@ function showBanner(text) { $('banner').hidden = !text; $('bannerText').textCont
 addEventListener('keydown', e => {
   if (e.key === ' ' && !pbEl.bar.hidden && !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement?.tagName || '')) { e.preventDefault(); pbEl.play.click(); return; }
   if (e.key !== 'Escape') return;
-  if (!settingsEl.hidden) openSettings(false); else if (sel) select(null); else if (replay.on) goLive();
+  if (!filtersEl.hidden) openFilters(false); else if (!settingsEl.hidden) openSettings(false); else if (sel) select(null); else if (replay.on) goLive();
 });
 
 function startSource() {
@@ -1550,20 +1756,21 @@ function startSource() {
 
 const statusEl = $('status');
 function renderStatus() {
-  const live = [...crafts.values()].filter(c => !c.dying && !c.hidden).length;
+  const live = [...crafts.values()].filter(c => !c.dying && !c.hidden && c.fOk !== false).length;
+  const total = [...crafts.values()].filter(c => !c.dying).length, nAc = filterCount() ? `${live} of ${total} aircraft` : `${live} aircraft`;
   let dot = '', text;
   if (replay.on) {
     const clock = new Date(replay.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    statusEl.innerHTML = `<span class="live"></span>${esc(`Playback at ${clock}, ${live} aircraft${replay.playing ? `, ${replay.speed}× speed` : ', paused'}`)}`;
+    statusEl.innerHTML = `<span class="live"></span>${esc(`Playback at ${clock}, ${nAc}${replay.playing ? `, ${replay.speed}× speed` : ', paused'}`)}`;
     return;
   }
-  if (cfg.source === 'demo') { dot = ''; text = `Demo traffic, ${live} aircraft${proxy || DATA_URL ? '' : ' · run server.py for live'}`; }
+  if (cfg.source === 'demo') { dot = ''; text = `Demo traffic, ${nAc}${proxy || DATA_URL ? '' : ' · run server.py for live'}`; }
   else if (cfg.source === 'cloud') {
     if (!lastDataT) { dot = failures ? 'bad' : ''; text = failures ? 'Live feed isn’t answering' : 'Connecting to the live feed…'; }
     else {
       const ago = Math.max(0, Math.round((Date.now() - lastDataT) / 1000));
       dot = failures || ago > 60 ? 'bad' : 'on';
-      text = `Live, ${live} aircraft, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
+      text = `Live, ${nAc}, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
     }
   }
   else {
@@ -1572,7 +1779,7 @@ function renderStatus() {
     else {
       const ago = Math.round((Date.now() - lastOk) / 1000);
       dot = failures ? 'bad' : 'on';
-      text = `${name}, ${live} aircraft within ${cfg.radius} nm, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
+      text = `${name}, ${nAc} within ${cfg.radius} nm, updated ${ago < 2 ? 'just now' : ago + ' s ago'}`;
     }
   }
   statusEl.innerHTML = `<span class="live ${dot}"></span>${esc(text)}`;
@@ -1607,6 +1814,7 @@ function placeEl(el, p, shift, state) {
 }
 for (const s of staticLabels) s.state = { vis: true };
 
+let airAcc = 0;
 let lastFrame = performance.now(), simAcc = 0, statusAcc = 1, sweepAcc = 0, pbAcc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1672,6 +1880,7 @@ function frame(now) {
 
   statusAcc += dt;
   if (statusAcc > 1) { statusAcc = 0; renderStatus(); if (sel) renderDetail(); }
+  airAcc += dt; if (airAcc > 3) { airAcc = 0; renderAirlines(false); }
   pbAcc += dt; if (pbAcc > 0.25) { pbAcc = 0; pbUI(); }
 }
 

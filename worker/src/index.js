@@ -6,7 +6,8 @@
 //   - current aircraft, with their routes looked up once per callsign
 //   - 30 minutes of position history per aircraft
 //   - which published approach each runway is using, and the path arrivals actually fly
-// After each poll it writes live.json to R2; every minute it writes history.json. The site reads
+// After each poll it writes live.json to R2; every minute it writes history.json, and every 10
+// minutes it files the finished 10 minutes as seg/<start>.json for longer playback. The site reads
 // both from data.whatsabove.nyc, so visitors never call the Worker or the ADS-B API themselves.
 //
 // The poller keeps itself awake with alarms. A cron trigger every minute pokes it, so it starts
@@ -17,7 +18,8 @@ import RAW_APPROACHES from '../../site/approaches.json';
 
 const LAT0 = 40.70, LON0 = -73.92, D2R = Math.PI / 180, FT_PER_NM = 6076.12;
 const COSL = Math.cos(LAT0 * D2R);
-const HISTORY_MIN = 30;           // keep this much history
+const HISTORY_MIN = 30;           // keep this much history in memory and in history.json
+const SEG_MS = 10 * 60e3;         // older history is kept in R2 as 10-minute segments: seg/<start in s>.json
 const TRAIL_EVERY_S = 20;         // one history point per aircraft every 20 s
 const GONE_AFTER_S = 60;          // not in the feed for this long: no longer live
 const MIN_AGL = 50, GROUND_FT = 15;
@@ -123,6 +125,10 @@ export class PollerV3 {
     this.landVotes = {};      // runway key -> landings
     this.tracks = {};         // runway key -> [{ t, pts: [{x, z, s}] }]
     this.rwyActive = {};
+    this.rwySince = {};       // runway key -> [time it became active, known (false: it was already active when the poller started)]
+    this.segNext = 0;         // start of the next 10-minute segment to file
+    this.histFrom = 0;        // start of the oldest segment filed
+    this.warmFrom = Date.now(); // until it has watched for a while, a runway it finds active isn't a change it saw happen
     this.lastScoreT = 0; this.lastHistory = 0;
     this.stats = { polls: 0, errors: 0, lastError: '', lastOk: 0, lastCount: 0, lastMs: 0 };
   }
@@ -148,6 +154,8 @@ export class PollerV3 {
       const L = h.learn || {};
       this.scores = L.scores || {}; this.landVotes = L.landVotes || {}; this.rwyActive = L.rwyActive || {};
       this.tracks = L.tracks || {}; this.lastScoreT = L.lastScoreT || 0;
+      if (L.scores) this.warmFrom = 0;
+      this.rwySince = L.rwySince || {}; this.segNext = L.segNext || 0; this.histFrom = L.histFrom || 0;
     } catch (e) { /* start fresh */ }
   }
 
@@ -252,9 +260,11 @@ export class PollerV3 {
       live.push(o);
     }
     this.stats.lastCount = live.length;
-    const body = JSON.stringify({ t: now, interval: this.interval, radius: Number(env.RADIUS_NM || 40), source: this.source || 'adsb.lol', ac: live, active: this.activeList(now) });
+    const body = JSON.stringify({ t: now, interval: this.interval, radius: Number(env.RADIUS_NM || 40), source: this.source || 'adsb.lol', ac: live,
+      active: this.activeList(now), histFrom: this.histFrom || null, seg: SEG_MS / 1000 });
     const puts = [env.DATA.put('live.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: `public, max-age=${Math.max(1, Math.floor(this.interval / 2))}` } })];
     if (now - this.lastHistory >= 60e3) { puts.push(this.writeHistory(now)); this.lastHistory = now; }
+    puts.push(this.writeSegments(now));
     await Promise.all(puts);
   }
 
@@ -317,9 +327,36 @@ export class PollerV3 {
     }
     const routes = {};
     for (const e of this.ac.values()) { const cs = e.r && e.r.cs, rt = cs && this.routes.get(cs); if (rt) routes[cs] = rt; }
-    const learn = { scores: this.scores, landVotes: this.landVotes, rwyActive: this.rwyActive, lastScoreT: this.lastScoreT, tracks: this.tracks };
+    const learn = { scores: this.scores, landVotes: this.landVotes, rwyActive: this.rwyActive, lastScoreT: this.lastScoreT, tracks: this.tracks,
+      rwySince: this.rwySince, segNext: this.segNext, histFrom: this.histFrom };
     const body = JSON.stringify({ t: now, minutes: HISTORY_MIN, every: TRAIL_EVERY_S, ac, meta, routes, learn });
     return this.env.DATA.put('history.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=20' } });
+  }
+
+  /* Files each finished 10 minutes of positions as seg/<start>.json (gzipped), kept indefinitely.
+     The in-memory trails reach back 30 minutes, so after a restart the missed segments are filled
+     in from them where they can be. */
+  async writeSegments(now) {
+    const cur = Math.floor(now / SEG_MS) * SEG_MS, oldest = Math.ceil((now - HISTORY_MIN * 60e3) / SEG_MS) * SEG_MS;
+    if (!this.segNext) this.segNext = oldest;
+    if (this.segNext >= cur) return;
+    const starts = [];
+    for (let t = Math.max(this.segNext, oldest); t < cur; t += SEG_MS) starts.push(t);
+    this.segNext = cur;
+    for (const t0 of starts) {
+      const a = t0 / 1000, b = a + SEG_MS / 1000, ac = {}, meta = {}, routes = {};
+      for (const [hex, e] of this.ac) {
+        const pts = e.trail.filter(p => p[0] >= a && p[0] < b);
+        if (!pts.length) continue;
+        ac[hex] = pts.map(([t, la, lo, alt]) => [Math.round(t - a), Math.round(la * 1e4), Math.round(lo * 1e4), alt]);
+        if (e.r) { meta[hex] = [e.r.cs, e.r.type, e.r.reg]; const rt = e.r.cs && this.routes.get(e.r.cs); if (rt && !rt.none) routes[e.r.cs] = rt; }
+      }
+      if (!Object.keys(ac).length) continue;
+      const json = JSON.stringify({ t: t0, minutes: SEG_MS / 60e3, every: TRAIL_EVERY_S, ac, meta, routes });
+      const gz = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+      await this.env.DATA.put(`seg/${a}.json`, gz, { httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip', cacheControl: 'public, max-age=86400, immutable' } });
+      if (!this.histFrom || t0 < this.histFrom) this.histFrom = t0;
+    }
   }
 
   async lookupRoutes(now) {
@@ -442,12 +479,15 @@ export class PollerV3 {
     const out = [];
     for (const [rk, g] of Object.entries(rw)) {
       this.rwyActive[rk] = this.rwyActive[rk] ? g.total >= 0.8 : (g.total >= 2 && g.total >= top[g.a] * 0.3);
-      if (!this.rwyActive[rk]) { delete this.rwyActive[rk]; continue; }
+      if (!this.rwyActive[rk]) { delete this.rwyActive[rk]; delete this.rwySince[rk]; continue; }
+      if (!this.rwySince[rk]) this.rwySince[rk] = [now, !!this.warm && now - this.warmFrom > 15 * 60e3];
       const visual = g.land >= 2 && g.sum < g.land * 0.35;
       const ap = visual || g.sum < 0.5 ? g.prio : g.best, fp = this.flownPath(rk, now);
       out.push({ a: g.a, rwy: g.rwy, id: ap.id, visual, title: visual ? `Visual approach RWY ${g.rwy}` : aprLabel(ap),
-        flown: fp ? fp.pts : null, n: fp ? fp.n : 0, sig: (visual ? 'V' : ap.id) + '|' + (fp ? fp.sig : 'pub') });
+        flown: fp ? fp.pts : null, n: fp ? fp.n : 0, sig: (visual ? 'V' : ap.id) + '|' + (fp ? fp.sig : 'pub'),
+        since: this.rwySince[rk][0], sinceKnown: !!this.rwySince[rk][1] });
     }
+    this.warm = true; // after the first pass, a runway that turns active is a real change
     return out;
   }
 }
