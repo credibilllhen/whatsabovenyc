@@ -31,7 +31,7 @@ jobs:
           # the page loads the approach data as a script; approaches.json is the file to edit
           printf 'window.APPROACHES_DATA=%s;\n' "$(cat site/approaches.json)" > _site/approaches.js
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
       - id: deployment
