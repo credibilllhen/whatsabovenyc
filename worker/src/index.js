@@ -65,9 +65,9 @@ for (const ap of APPROACHES) {
   for (let i = 1; i <= 14; i++) { const q = i / 14, a = (1 - q) * (1 - q), b = 2 * (1 - q) * q, c = q * q; curve.push({ x: a * P.x + b * C.x + c * F.x, z: a * P.z + b * C.z + c * F.z }); }
   ap.xz = ap.xz.slice(0, n - 1).concat(curve, [T]); measure(ap);
 }
-const altAt = (ap, s) => (ap.el + ap.tch) / FT_PER_NM + Math.tan(ap.gpa * D2R) * s;
 return { ...cfg, toXZ, APPROACHES, THR };
 }
+const altAt = (ap, s) => (ap.el + ap.tch) / FT_PER_NM + Math.tan(ap.gpa * D2R) * s;
 const CITY = Object.fromEntries(Object.entries(CITY_CFG).map(([k, c]) => [k, prepCity(c)]));
 
 function projectOn(ap, x, z) {
