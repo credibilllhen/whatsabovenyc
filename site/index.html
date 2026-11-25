@@ -1709,7 +1709,7 @@ function syncFilterUI() {
   for (const b of filtersEl.querySelectorAll('.chip')) b.setAttribute('aria-pressed', String(!!F[b.dataset.ph]));
   $('fApt').value = F.apt; $('fArea').checked = F.area;
   bFilters.dataset.n = String(filterCount());
-  bFilters.setAttribute('aria-label', filterCount() ? `Filters, ${filterCount()} on` : 'Filters');
+  bFilters.setAttribute('aria-label', filterCount() ? `Find and filter, ${filterCount()} filter${filterCount() > 1 ? 's' : ''} on` : 'Find and filter');
   $('fAirNote').textContent = F.airlines.length ? `Showing ${F.airlines.length === 1 ? 'one airline' : F.airlines.length + ' airlines'} only.` : 'Showing all airlines. Tick airlines to show only those.';
 }
 function filtersChanged() {
@@ -1804,11 +1804,12 @@ function runFind() {
     findHits.push({ ...h, title: flightNo(h.cs, null, h) || h.reg || h.hex.toUpperCase(), when: spanOf(h.t0, h.t1) });
   const canDeep = cfg.source === 'cloud' && !!histFrom && !(findPast && findPast.q === q && findPast.done);
   const busy = findPast && findPast.q === q && !findPast.done;
-  fResults.innerHTML = findHits.map((h, i) => `<button type="button" data-i="${i}"><b>${esc(h.title)}</b><span class="d">${esc(h.when)}</span>` +
+  const html = findHits.map((h, i) => `<button type="button" data-i="${i}"><b>${esc(h.title)}</b><span class="d">${esc(h.when)}</span>` +
     `<span class="w">${esc([h.sub, h.type, h.reg, h.title !== h.cs && h.cs ? 'callsign ' + h.cs : ''].filter(Boolean).join(' · '))}</span></button>`).join('') +
     (findHits.length ? '' : `<p>No match ${busy ? 'yet' : 'in the sky or the last 30 minutes'}.</p>`) +
     (busy ? `<p>Searching the last 24 hours… ${findPast.n} of ${findPast.of}</p>` :
       canDeep ? `<button type="button" data-deep="1"><b>Search the last 24 hours</b><span class="w">Looks through every 10-minute segment saved since then</span></button>` : '');
+  if (html !== fResults.innerHTML) fResults.innerHTML = html; // unchanged results stay put under the pointer
 }
 async function deepFind() {
   const q = NORM(fFind.value); if (!q) return;
@@ -1841,7 +1842,12 @@ fResults.addEventListener('click', e => {
   if (b.dataset.deep) { deepFind(); return; }
   const h = findHits[+b.dataset.i]; if (!h) return;
   if (h.live) { const c = crafts.get(h.hex); if (c) { select(c); following = true; renderDetail(); } }
-  else { pendingSel = h.hex; enterReplay(Math.max(h.t0, Math.min(h.t1 - 30e3, h.t0 + 60e3)), true); }
+  else {
+    const T = Math.max(h.t0, Math.min(h.t1 - 30e3, h.t0 + 60e3));
+    const fit = [...pbEl.range.options].find(o => +o.value === 0 || +o.value * 1000 >= Date.now() - T + 60e3); // widen the slider to reach it
+    if (fit && pbRangeMs() < Date.now() - T) { pbEl.range.value = fit.value; store.set('pbRange', +fit.value); }
+    pendingSel = h.hex; enterReplay(T, true);
+  }
   openFilters(false); // the flight's card sits where this panel is
 });
 addEventListener('keydown', e => {
