@@ -14,10 +14,16 @@
 // on the first deploy and restarts if the alarm chain ever breaks. On a cold start it restores
 // its state from history.json.
 
-import RAW_APPROACHES from '../../site/approaches.json';
+import NYC_APPROACHES from '../../site/approaches.json';
+import BOSTON_APPROACHES from '../cities/boston-approaches.json';
 
-const LAT0 = 40.70, LON0 = -73.92, D2R = Math.PI / 180, FT_PER_NM = 6076.12;
-const COSL = Math.cos(LAT0 * D2R);
+// One poller instance per city, each with its own center, approaches and folder in the bucket.
+// New York keeps the bucket's top level, as before; Boston's files are under boston/.
+const CITY_CFG = {
+  nyc: { lat0: 40.70, lon0: -73.92, prefix: '', approaches: NYC_APPROACHES, site: 'whatsabove.nyc' },
+  boston: { lat0: 42.36, lon0: -71.01, prefix: 'boston/', approaches: BOSTON_APPROACHES, site: 'whatsabove.boston' },
+};
+const D2R = Math.PI / 180, FT_PER_NM = 6076.12;
 const HISTORY_MIN = 30;           // keep this much history in memory and in history.json
 const SEG_MS = 10 * 60e3;         // older history is kept in R2 as 10-minute segments: seg/<start in s>.json
 const TRAIL_EVERY_S = 20;         // one history point per aircraft every 20 s
@@ -26,7 +32,6 @@ const MIN_AGL = 50, GROUND_FT = 15;
 const ROUTE_LOOKUPS_PER_POLL = 3; // be gentle with adsbdb
 const ROUTE_RETRY_MS = 3600e3;
 
-const toXZ = (lat, lon) => ({ x: (lon - LON0) * 60 * COSL, z: -(lat - LAT0) * 60 });
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const num = v => (v == null || v === '' ? null : Number(v));
@@ -34,9 +39,11 @@ const r1 = v => Math.round(v * 1000) / 1000;
 
 /* ---------- approaches (same preparation as the page, so both agree) ---------- */
 const APR_PRIO = { I: 0, H: 1, R: 2, L: 3, S: 4 };
-const APPROACHES = RAW_APPROACHES.map(a => ({ ...a }));
-const THR = {};
 function measure(ap) { const n = ap.xz.length; ap.s = new Array(n).fill(0); for (let i = n - 2; i >= 0; i--) ap.s[i] = ap.s[i + 1] + Math.hypot(ap.xz[i + 1].x - ap.xz[i].x, ap.xz[i + 1].z - ap.xz[i].z); }
+function prepCity(cfg) {
+const COSL = Math.cos(cfg.lat0 * D2R);
+const toXZ = (lat, lon) => ({ x: (lon - cfg.lon0) * 60 * COSL, z: -(lat - cfg.lat0) * 60 });
+const APPROACHES = cfg.approaches.map(a => ({ ...a })), THR = {};
 for (const ap of APPROACHES) {
   ap.rk = ap.a + ' ' + ap.rwy; ap.key = ap.a + ' ' + ap.id;
   ap.xz = ap.p.map(([la, lo]) => toXZ(la, lo)); measure(ap);
@@ -59,6 +66,10 @@ for (const ap of APPROACHES) {
   ap.xz = ap.xz.slice(0, n - 1).concat(curve, [T]); measure(ap);
 }
 const altAt = (ap, s) => (ap.el + ap.tch) / FT_PER_NM + Math.tan(ap.gpa * D2R) * s;
+return { ...cfg, toXZ, APPROACHES, THR };
+}
+const CITY = Object.fromEntries(Object.entries(CITY_CFG).map(([k, c]) => [k, prepCity(c)]));
+
 function projectOn(ap, x, z) {
   let best = null;
   for (let i = 0; i < ap.xz.length - 1; i++) {
@@ -134,11 +145,17 @@ export class PollerV3 {
   }
   get interval() { return clamp(Number(this.env.POLL_SECONDS) || 10, 2, 60); }
 
+  async setCity(name) { // which city this instance is: told by the Worker, remembered for alarms
+    if (!this.city) this.city = (await this.state.storage.get('city')) || 'nyc';
+    if (name && CITY[name] && name !== this.city) { this.city = name; await this.state.storage.put('city', name); }
+    this.C = CITY[this.city];
+  }
   async load() {
+    if (!this.C) await this.setCity();
     if (this.loaded) return;
     this.loaded = true;
     try { // a cold start picks up where the last history file left off
-      const obj = await this.env.DATA.get('history.json');
+      const obj = await this.env.DATA.get(this.C.prefix + 'history.json');
       if (!obj) return;
       const h = await obj.json();
       if (!h || Date.now() - h.t > HISTORY_MIN * 60e3) return;
@@ -172,6 +189,7 @@ export class PollerV3 {
     if (build && this.env.BUILD_ID && build !== this.env.BUILD_ID && this.state.abort) {
       this.state.abort(`restarting for build ${build}`);
     }
+    await this.setCity(req.headers.get('X-City'));
     await this.load();
     if (path === '/kick') { await this.ensureAlarm(); return new Response('ok'); }
     if (path === '/ingest') { // a feed from the home relay, already checked by the Worker
@@ -190,7 +208,7 @@ export class PollerV3 {
       }
     }
     await this.ensureAlarm();
-    return Response.json({ ...this.stats, build: this.env.BUILD_ID || 'dev', source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
+    return Response.json({ city: this.city, ...this.stats, build: this.env.BUILD_ID || 'dev', source: this.source, resting: this.rest || {}, aircraft: [...this.ac.values()].filter(e => !e.gone).length,
       tracked: this.ac.size, routes: this.routes.size, interval: this.interval });
   }
 
@@ -232,7 +250,7 @@ export class PollerV3 {
       e.r = r; e.lastSeen = now; e.gone = false;
       if (now - e.lastTrail >= TRAIL_EVERY_S * 1000) { e.trail.push([r1(tSec), r.lat, r.lon, Math.round(r.altFt)]); e.lastTrail = now; }
       if (r.altFt < 9000) { // positions below 9,000 ft, for learning the paths arrivals fly
-        const p = toXZ(r.lat, r.lon), L = e.hist[e.hist.length - 1];
+        const p = this.C.toXZ(r.lat, r.lon), L = e.hist[e.hist.length - 1];
         if (!L || Math.hypot(p.x - L.x, p.z - L.z) > 0.12) { e.hist.push({ x: p.x, z: p.z }); if (e.hist.length > 400) e.hist.shift(); }
       }
     }
@@ -262,7 +280,7 @@ export class PollerV3 {
     this.stats.lastCount = live.length;
     const body = JSON.stringify({ t: now, interval: this.interval, radius: Number(env.RADIUS_NM || 40), source: this.source || 'adsb.lol', ac: live,
       active: this.activeList(now), histFrom: this.histFrom || null, seg: SEG_MS / 1000 });
-    const puts = [env.DATA.put('live.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: `public, max-age=${Math.max(1, Math.floor(this.interval / 2))}` } })];
+    const puts = [env.DATA.put(this.C.prefix + 'live.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: `public, max-age=${Math.max(1, Math.floor(this.interval / 2))}` } })];
     if (now - this.lastHistory >= 60e3) { puts.push(this.writeHistory(now)); this.lastHistory = now; }
     puts.push(this.writeSegments(now));
     await Promise.all(puts);
@@ -273,13 +291,13 @@ export class PollerV3 {
      Cloudflare's outbound addresses are shared, so volunteer APIs sometimes rate-limit them. */
   sources() {
     const env = this.env, r = env.RADIUS_NM || 40;
-    const fill = t => t.replace('{lat}', LAT0).replace('{lon}', LON0).replace('{dist}', r);
+    const { lat0, lon0 } = this.C, fill = t => t.replace('{lat}', lat0).replace('{lon}', lon0).replace('{dist}', r);
     const main = { name: (env.ADSB_URL || 'https://api.adsb.lol').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^api\./, ''),
       url: (env.ADSB_URL || 'https://api.adsb.lol').replace(/\/+$/, '') + fill(env.ADSB_PATH || '/v2/point/{lat}/{lon}/{dist}'), key: true };
     const list = [];
     // FlyItalyADSB identifies us by key rather than IP, so it works from Cloudflare's shared addresses.
     // Its radius is in km. Free key: 30 requests/minute, 300,000/month.
-    if (env.FLYITALY_API_KEY) list.push({ name: 'flyitalyadsb', url: `https://api.flyitalyadsb.com/v2/lat/${LAT0}/lon/${LON0}/dist/${Math.round(r * 1.852)}`,
+    if (env.FLYITALY_API_KEY) list.push({ name: 'flyitalyadsb', url: `https://api.flyitalyadsb.com/v2/lat/${lat0}/lon/${lon0}/dist/${Math.round(r * 1.852)}`,
       headers: { 'X-Api-Key': env.FLYITALY_API_KEY } });
     list.push(main);
     if (env.FALLBACK !== 'off') list.push({ name: 'adsb.fi', url: fill(env.FALLBACK_URL || 'https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{dist}') });
@@ -287,7 +305,7 @@ export class PollerV3 {
   }
   async fetchFeed(now) {
     this.rest = this.rest || {};
-    const headers = { 'User-Agent': 'whatsabove.nyc poller', Accept: 'application/json' };
+    const headers = { 'User-Agent': `${this.C.site} poller`, Accept: 'application/json' };
     const errors = [];
     for (const src of this.sources()) {
       const st = this.rest[src.name] || (this.rest[src.name] = { until: 0, strikes: 0 });
@@ -330,7 +348,7 @@ export class PollerV3 {
     const learn = { scores: this.scores, landVotes: this.landVotes, rwyActive: this.rwyActive, lastScoreT: this.lastScoreT, tracks: this.tracks,
       rwySince: this.rwySince, segNext: this.segNext, histFrom: this.histFrom };
     const body = JSON.stringify({ t: now, minutes: HISTORY_MIN, every: TRAIL_EVERY_S, ac, meta, routes, learn });
-    return this.env.DATA.put('history.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=20' } });
+    return this.env.DATA.put(this.C.prefix + 'history.json', body, { httpMetadata: { contentType: 'application/json', cacheControl: 'public, max-age=20' } });
   }
 
   /* Files each finished 10 minutes of positions as seg/<start>.json (gzipped), kept indefinitely.
@@ -354,7 +372,7 @@ export class PollerV3 {
       if (!Object.keys(ac).length) continue;
       const json = JSON.stringify({ t: t0, minutes: SEG_MS / 60e3, every: TRAIL_EVERY_S, ac, meta, routes });
       const gz = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
-      await this.env.DATA.put(`seg/${a}.json`, gz, { httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip', cacheControl: 'public, max-age=86400, immutable' } });
+      await this.env.DATA.put(`${this.C.prefix}seg/${a}.json`, gz, { httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip', cacheControl: 'public, max-age=86400, immutable' } });
       if (!this.histFrom || t0 < this.histFrom) this.histFrom = t0;
     }
   }
@@ -392,9 +410,9 @@ export class PollerV3 {
       const r = e.r;
       if (e.gone || !r || r.altFt > 6000 || r.vr > 300) continue;
       if (e.lastVote && now - e.lastVote < 10000) continue;
-      const p = toXZ(r.lat, r.lon), altNm = r.altFt / FT_PER_NM;
+      const p = this.C.toXZ(r.lat, r.lon), altNm = r.altFt / FT_PER_NM;
       let best = null;
-      for (const ap of APPROACHES) {
+      for (const ap of this.C.APPROACHES) {
         const pr = projectOn(ap, p.x, p.z);
         if (pr.end || pr.s < 0.3) continue;
         if (pr.lat > Math.max(0.5, pr.s * 0.06)) continue;
@@ -418,9 +436,9 @@ export class PollerV3 {
     let j = h.length - 1; while (j > 0 && Math.hypot(h[j].x - last.x, h[j].z - last.z) < 0.8) j--;
     const hx = last.x - h[j].x, hz = last.z - h[j].z, hl = Math.hypot(hx, hz); if (hl < 0.3) return;
     let best = null;
-    for (const ap of APPROACHES) {
+    for (const ap of this.C.APPROACHES) {
       if (!ap.u || (best && best.rk === ap.rk)) continue;
-      const T = THR[ap.rk], d = Math.hypot(last.x - T.x, last.z - T.z);
+      const T = this.C.THR[ap.rk], d = Math.hypot(last.x - T.x, last.z - T.z);
       if (d > 2 || (hx * ap.u.x + hz * ap.u.z) / hl < Math.cos(35 * D2R)) continue;
       if (!best || d < best.d) best = { rk: ap.rk, d, T };
     }
@@ -468,7 +486,7 @@ export class PollerV3 {
   // Runways in use, with the approach to draw and (when known) the path arrivals are flying.
   activeList(now) {
     const rw = {}, top = {};
-    for (const ap of APPROACHES) {
+    for (const ap of this.C.APPROACHES) {
       const sc = this.scores[ap.key] || 0;
       const g = rw[ap.rk] || (rw[ap.rk] = { a: ap.a, rwy: ap.rwy, sum: 0, best: null, bestSc: -1, prio: null });
       g.sum += sc;
@@ -493,7 +511,11 @@ export class PollerV3 {
 }
 
 /* ---------- the Worker ---------- */
-const poller = env => env.POLLER.get(env.POLLER.idFromName('nyc'));
+const poller = (env, city) => { // the instance for a city, told which city it is
+  const stub = env.POLLER.get(env.POLLER.idFromName(city));
+  return { fetch: (u, init = {}) => stub.fetch(u, { ...init, headers: { ...(init.headers || {}), 'X-City': city } }) };
+};
+const cityOf = url => CITY[url.searchParams.get('city')] ? url.searchParams.get('city') : 'nyc';
 
 export default {
   // GET /status shows how the poller is doing (and starts it if it isn't running).
@@ -501,7 +523,7 @@ export default {
   // before data.whatsabove.nyc is connected, and for local testing.
   async fetch(req, env) {
     const url = new URL(req.url);
-    const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+    const city = cityOf(url), cors = { 'Access-Control-Allow-Origin': `https://${CITY[city].site}` };
     if (url.pathname === '/ingest' && req.method === 'POST') { // the home relay
       const want = env.INGEST_TOKEN, got = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
       if (!want || got.length !== want.length) return new Response('unauthorized', { status: 401 });
@@ -509,17 +531,17 @@ export default {
       if (diff) return new Response('unauthorized', { status: 401 });
       let body = req.body;
       if (req.headers.get('X-Gzip') === '1') body = body.pipeThrough(new DecompressionStream('gzip'));
-      return poller(env).fetch('https://poller/ingest', { method: 'POST', body, headers: { 'X-Source': (req.headers.get('X-Source') || 'home relay').slice(0, 40) } });
+      return poller(env, city).fetch('https://poller/ingest', { method: 'POST', body, headers: { 'X-Source': (req.headers.get('X-Source') || 'home relay').slice(0, 40) } });
     }
     if (url.pathname === '/live.json' || url.pathname === '/history.json') {
-      const obj = await env.DATA.get(url.pathname.slice(1));
+      const obj = await env.DATA.get(CITY[city].prefix + url.pathname.slice(1));
       if (!obj) return new Response('not ready yet', { status: 404, headers: cors });
       return new Response(obj.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': obj.httpMetadata?.cacheControl || 'no-store' } });
     }
-    if (url.pathname === '/status') return poller(env).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
-    return new Response('whatsabove.nyc poller. See /status.', { headers: cors });
+    if (url.pathname === '/status') return poller(env, city).fetch(`https://poller/status?build=${env.BUILD_ID || ''}`);
+    return new Response('whatsabove poller for ' + Object.keys(CITY).join(' and ') + '. See /status?city=…', { headers: cors });
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(poller(env).fetch(`https://poller/kick?build=${env.BUILD_ID || ''}`));
+    for (const city of Object.keys(CITY)) ctx.waitUntil(poller(env, city).fetch(`https://poller/kick?build=${env.BUILD_ID || ''}`));
   },
 };

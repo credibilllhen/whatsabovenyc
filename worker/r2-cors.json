@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://whatsabove.nyc", "https://www.whatsabove.nyc"],
+        "origins": ["https://whatsabove.nyc", "https://www.whatsabove.nyc", "https://whatsabove.boston", "https://www.whatsabove.boston"],
         "methods": ["GET", "HEAD"]
       },
       "maxAgeSeconds": 3600

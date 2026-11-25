@@ -43,7 +43,7 @@ After=network-online.target tor.service
 
 [Service]
 ExecStart=/usr/bin/python3 -I /opt/whatsabove-relay/relay.py
-Environment=RELAY_PROXY=http://127.0.0.1:9080 PYTHONUNBUFFERED=1
+Environment=RELAY_PROXY=http://127.0.0.1:9080 RELAY_CITIES=nyc,boston PYTHONUNBUFFERED=1
 LoadCredential=token:/etc/whatsabove/token
 Restart=always
 RestartSec=15
