@@ -70,6 +70,11 @@ Copy your token to the Pi, then:
 
 Log: `journalctl -u whatsabove-relay -f`.
 
+**Two cities.** The same poller serves whatsabove.boston. It runs a separate instance per city
+(`?city=boston` on `/ingest`, `/status` and `/live.json`), Boston's approaches are in
+`worker/cities/boston-approaches.json`, and Boston's files are in the same bucket under `boston/`.
+The Pi installer sets `RELAY_CITIES=nyc,boston`, so one relay feeds both.
+
 ## Settings
 
 In `worker/wrangler.toml`:
