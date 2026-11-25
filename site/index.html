@@ -158,6 +158,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .alist .n{color:var(--muted);font-variant-numeric:tabular-nums}
 .alist .code{color:var(--muted);font-size:12px;margin-left:4px}
 .alist .empty{padding:9px;color:var(--muted);font-size:13px}
+.results{margin-top:6px}
+.results button{display:grid;grid-template-columns:1fr auto;gap:2px 10px;width:100%;text-align:left;font:inherit;font-size:13.5px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;cursor:pointer}
+.results button:hover,.results button:focus-visible{background:var(--halo)}
+.results b{font-weight:600}.results .d{color:var(--muted);font-size:12.5px}.results .w{grid-column:1/-1;color:var(--muted);font-size:12.5px}
+.results p{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.dnote{margin:8px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted);border-left:2px solid var(--line);padding-left:8px}
 #bFilters[data-n]:not([data-n="0"])::after{content:attr(data-n);display:inline-block;margin-left:6px;min-width:17px;padding:2px 5px;border-radius:9px;background:var(--ink);color:var(--water);font-size:11px;line-height:13px;text-align:center}
 #pbRange{flex:none;font:inherit;font-size:13px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 4px}
 #banner{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);width:min(520px,calc(100vw - 24px));background:var(--panel);border:1px solid var(--dep);border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:center}
@@ -195,12 +201,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <button class="tb" id="bTags" type="button">Tags: full</button>
   <button class="tb" id="bTop" type="button" aria-pressed="false">Top view</button>
   <button class="tb" id="bHome" type="button">Recenter</button>
-  <button class="tb" id="bFilters" type="button" aria-expanded="false" aria-controls="filters" data-n="0">Filters</button>
+  <button class="tb" id="bFilters" type="button" aria-expanded="false" aria-controls="filters" data-n="0">Find &amp; filter</button>
   <button class="tb" id="bSettings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
 </nav>
 
 <section id="filters" aria-label="Filters" hidden>
-  <div class="row"><h2>Filters</h2><button class="x" id="fClose" type="button" aria-label="Close filters">✕</button></div>
+  <div class="row"><h2>Find &amp; filter</h2><button class="x" id="fClose" type="button" aria-label="Close filters">✕</button></div>
+  <h3><label for="fFind">Find a flight</label></h3>
+  <input type="search" id="fFind" placeholder="DL5831, 5831, N244JQ…" autocomplete="off" spellcheck="false" aria-describedby="fFindNote">
+  <p class="note" id="fFindNote">Flight number, callsign or registration. Regional flights match on the number alone.</p>
+  <div id="fResults" class="results" aria-live="polite"></div>
   <h3>Traffic</h3>
   <div class="chips" role="group" aria-label="Traffic">
     <button class="chip" type="button" data-ph="arr" aria-pressed="true"><i class="sw" style="background:var(--arr)"></i>Arriving</button>
@@ -254,6 +264,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     <div class="arrow" aria-hidden="true"></div>
     <div class="right"><span class="code" id="dDest"></span><span class="city" id="dDestN"></span></div>
   </div>
+  <p class="dnote" id="dNote" hidden></p>
   <dl id="dGrid"></dl>
   <button class="tb wide" id="dFollow" type="button">Follow this flight</button>
 </section>
@@ -826,7 +837,7 @@ const TRAIL_INDEX = (() => {
 const TRAIL_W = 0.22, TRAIL_WV = 0.15;
 
 const crafts = new Map();
-let sel = null, following = false;
+let sel = null, following = false, pendingSel = null; // pendingSel: a flight to select once playback shows it
 const hitList = [];
 const selRing = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.8, 40).rotateX(-Math.PI / 2), M.sel);
 selRing.visible = false; scene.add(selRing);
@@ -881,6 +892,7 @@ class Craft {
       if (this.init) { this.pts.length = 0; this.full = true; }
       this.pos.set(tg.x, 0, tg.z); this.alt = tg.a; this.hdg = tr; this.init = true;
     }
+    observeAirport(this, r);
     this.setPhase(); this.fOk = filterOk(this); this.renderTag();
   }
   seedTrail(seed, tSec) {
@@ -888,9 +900,11 @@ class Craft {
     this.full = true;
   }
   setPhase() {
-    const r = this.rec, rt = routeFor(r.cs);
+    const r = this.rec, rt = routeOf(this);
     let ph = 'thru';
     if (r.ground) ph = 'gnd';
+    else if (this.landAt) ph = 'arr';
+    else if (this.fromAt) ph = 'dep';
     else if (rt) {
       const o = LOCAL.has(normCode(rt.orig)), d = LOCAL.has(normCode(rt.dest));
       if (d && !o) ph = 'arr'; else if (o && !d) ph = 'dep'; else if (o && d) ph = (r.vr || 0) < 0 ? 'arr' : 'dep';
@@ -905,9 +919,9 @@ class Craft {
   }
   renderTag() {
     const r = this.rec; if (!r) return;
-    const rt = routeFor(r.cs), pending = routes.get(r.cs)?.pending;
+    const rt = routeOf(this), pending = routes.get(r.cs)?.pending;
     const isSel = sel === this, mode = isSel ? 'full' : cfg.tags;
-    let h = `<b>${esc(flightNo(r.cs, rt) || r.reg || r.hex.toUpperCase())}</b>`;
+    let h = `<b>${esc(flightNo(r.cs, rt, r) || r.reg || r.hex.toUpperCase())}</b>`;
     if (mode === 'full') {
       if (r.type) h += ` <span class="d">${esc(r.type)}</span>`;
       h += '<br>' + (rt ? `${esc(rt.orig || '?')} → ${esc(rt.dest || '?')}` : `<span class="d">${pending ? 'Finding route…' : 'Route unknown'}</span>`);
@@ -992,14 +1006,14 @@ class Craft {
 
 /* ---------- filters ---------- */
 const airNames = {}; // airline names learned from routes, for codes not in AIRLINES
-const airlineKeyOf = r => { const m = /^([A-Z]{3})\d/.exec((r && r.cs) || ''); return m ? m[1] : '_'; };
+const airlineKeyOf = r => { const m = /^([A-Z]{3})\d/.exec((r && r.cs) || ''); if (!m) return '_'; const sl = sellerOf(r); return sl ? sl.seller : m[1]; };
 const airlineLabelOf = k => k === '_' ? 'Private and other' : (AIRLINES[k] ? AIRLINES[k][1] : airNames[k] || k);
 function filterOk(c) {
-  const r = c.rec; if (!r) return true;
+  const r = c.rec; if (!r || c === sel) return true;
   const ph = c.phase;
   if ((ph === 'arr' && !F.arr) || (ph === 'dep' && !F.dep) || (ph === 'thru' && !F.thru)) return false;
   if (ph === 'gnd' && !(F.arr && F.dep && F.thru)) return false;
-  const rt = routeFor(r.cs), key = airlineKeyOf(r);
+  const rt = routeOf(c), key = airlineKeyOf(r);
   if (rt && rt.airline && key !== '_' && !AIRLINES[key]) airNames[key] = rt.airline;
   if (ph === 'arr' || ph === 'dep') { // the airport it is arriving at or leaving from
     const code = rt ? normCode(ph === 'arr' ? rt.dest : rt.orig) : '';
@@ -1012,6 +1026,27 @@ function filterOk(c) {
 }
 const filterCount = () => (F.arr && F.dep && F.thru ? 0 : 1) + (F.apt !== 'ALL' ? 1 : 0) + (F.area ? 0 : 1) + (F.airlines.length ? 1 : 0);
 
+/* ---------- regional flights ----------
+   A regional airline broadcasts its own code (RPA5831) while the flight is sold by a mainline
+   airline (DL5831). Airlines that fly for just one partner are labeled as that partner's flight.
+   Republic flies for Delta, United and American: its aircraft registrations follow the partner
+   (N2xxJQ for Delta, N4xxYX for American, N7xxYX for United) and American's numbers are 4300-4699.
+   SkyWest flies for four partners with mixed fleets and numbers, so it keeps its own label. */
+const ONE_PARTNER = { EDV: 'DAL', ENY: 'AAL', PDT: 'AAL', JIA: 'AAL', ASH: 'UAL', GJS: 'UAL', QXE: 'ASA', JZA: 'ACA' };
+const PARTNERS = { RPA: ['DAL', 'UAL', 'AAL'], SKW: ['DAL', 'UAL', 'AAL', 'ASA'] };
+function sellerOf(r) { // -> { op, seller, sure } or null
+  const m = /^([A-Z]{3})0*(\d{1,4})/.exec((r && r.cs) || ''); if (!m) return null;
+  const op = m[1], n = +m[2];
+  if (ONE_PARTNER[op]) return { op, seller: ONE_PARTNER[op], sure: true };
+  if (op === 'RPA') {
+    const reg = r.reg || '';
+    if (/^N2\d\dJQ$/.test(reg)) return { op, seller: 'DAL', sure: false, why: 'registration' };
+    if (/^N4\d\dYX$/.test(reg) || (n >= 4300 && n <= 4699)) return { op, seller: 'AAL', sure: false, why: reg ? 'registration' : 'number' };
+    if (/^N7\d\dYX$/.test(reg)) return { op, seller: 'UAL', sure: false, why: 'registration' };
+  }
+  return null;
+}
+
 function altBlock(r) {
   const gs = Math.round(r.gs || 0);
   if (r.ground) return `GND  ${gs} kt`;
@@ -1019,15 +1054,52 @@ function altBlock(r) {
   const arrow = (r.vr || 0) > 300 ? '↑' : (r.vr || 0) < -300 ? '↓' : '·';
   return `${fl} ${arrow} ${gs} kt`;
 }
-function flightNo(cs, rt) {
+function flightNo(cs, rt, r) {
   const m = /^([A-Z]{3})0*(\d{1,4}[A-Z]{0,2})$/.exec(cs || '');
   if (!m) return cs || '';
-  const iata = (rt && rt.airlineIata) || (AIRLINES[m[1]] || [])[0];
+  const sl = r && sellerOf(r), code = sl ? sl.seller : m[1];
+  // our own table first: the route database still has some retired codes (Republic as RW, now YX)
+  const iata = (AIRLINES[code] || [])[0] || (rt && rt.airlineIata);
   return iata ? `${iata} ${m[2]}` : cs;
 }
-function airlineName(cs, rt) {
-  if (rt && rt.airline) return rt.airline;
-  const m = /^([A-Z]{3})\d/.exec(cs || ''); return m && AIRLINES[m[1]] ? AIRLINES[m[1]][1] : '';
+function airlineName(cs, rt, r) {
+  const m = /^([A-Z]{3})\d/.exec(cs || ''), sl = r && sellerOf(r);
+  const own = m && AIRLINES[m[1]] ? AIRLINES[m[1]][1] : (rt && rt.airline) || '';
+  if (sl) return `${AIRLINES[sl.seller][1]}, operated by ${own}${sl.sure ? '' : ' (likely)'}`;
+  if (m && PARTNERS[m[1]]) return `${own}, flying for ${PARTNERS[m[1]].map(k => AIRLINES[k][1]).join(', ').replace(/, ([^,]*)$/, ' or $1')}`;
+  return own;
+}
+
+/* ---------- what the flight is doing, when the route database disagrees ----------
+   Route listings come from a crowd-sourced database keyed by callsign, and some are stale.
+   A flight seen on a published approach near the glide path is landing at that airport, and one
+   first seen climbing out low beside an airport left from it, whatever the listing says. */
+function observeAirport(c, r) {
+  if (!c.fix || r.ground) return;
+  const ft = r.altFt || 0, vr = r.vr || 0;
+  if (c.firstFt == null) c.firstFt = ft;
+  if (!c.landAt && ft < 5000 && vr < 300) {
+    for (const ap of APPROACHES) {
+      const pr = projectOn(ap, c.fix.x, c.fix.z);
+      if (pr.end || pr.s < 0.3 || pr.s > 14 || pr.lat > Math.max(0.4, pr.s * 0.05)) continue;
+      if (Math.abs(angDiff((r.track || 0) * D2R, pr.hdg)) > 25 * D2R) continue;
+      if (Math.abs(ft / FT_PER_NM - altAt(ap, pr.s)) > 1200 / FT_PER_NM) continue;
+      if ((c.landHits = (c.landHits || 0) + 1) >= 2) c.landAt = ap.a; // two sightings, so a crossing doesn't count
+      return;
+    }
+  }
+  if (!c.fromAt && !c.landAt && c.firstFt < 1500 && ft < 3000 && vr > 500) {
+    for (const a of AIRPORTS) { const q = toXZ(a.ll[0], a.ll[1]); if (Math.hypot(q.x - c.fix.x, q.z - c.fix.z) < 4) { c.fromAt = a.code; break; } }
+  }
+}
+const placeName = code => CITY[code] || (AP[code] ? AP[code].name : '');
+function routeOf(c) { // the route to show and classify by; doubt: the database's listing when it was overruled
+  const r = c && c.rec, rt = r ? routeFor(r.cs) : null, lo = c && c.landAt, fr = c && c.fromAt;
+  const base = rt ? { orig: rt.orig, dest: rt.dest, origName: rt.origName, destName: rt.destName, airline: rt.airline, airlineIata: rt.airlineIata } : null;
+  const listed = rt ? `${rt.orig || '?'} → ${rt.dest || '?'}` : '';
+  if (lo && (!rt || normCode(rt.dest) !== lo)) return { orig: '?', origName: '', dest: lo, destName: placeName(lo), seen: true, doubt: listed };
+  if (fr && !lo && (!rt || normCode(rt.orig) !== fr)) return { orig: fr, origName: placeName(fr), dest: '?', destName: '', seen: true, doubt: listed };
+  return base;
 }
 
 /* ---------- ingest ---------- */
@@ -1237,6 +1309,7 @@ function ingest(recs, now) {
     for (const c of crafts.values()) if (!c.dying && !seen.has(c.hex) && c.rec && (c.rec.altFt || 0) < 1500 && (c.rec.vr || 0) <= 0) c.die(tSec);
   }
   scoreRunways(now);
+  if (pendingSel && crafts.get(pendingSel)) { select(crafts.get(pendingSel)); following = true; pendingSel = null; }
   if (sel) renderDetail();
 }
 function clearAll() {
@@ -1556,17 +1629,21 @@ function simRecords() {
 const detailEl = $('detail');
 function select(c) {
   const prev = sel; sel = c;
-  if (prev && prev !== c) prev.renderTag();
+  if (prev && prev !== c) { prev.fOk = filterOk(prev); prev.renderTag(); }
+  if (c) c.fOk = true;
   if (!c) following = false;
   if (c) c.renderTag();
   renderDetail();
 }
 function renderDetail() {
   if (!sel || !sel.rec) { detailEl.hidden = true; document.body.classList.remove('has-detail'); selRing.visible = false; return; }
-  const r = sel.rec, rt = routeFor(r.cs), pending = routes.get(r.cs)?.pending;
+  const r = sel.rec, rt = routeOf(sel), pending = routes.get(r.cs)?.pending;
   detailEl.hidden = false; document.body.classList.add('has-detail');
-  $('dFlight').textContent = flightNo(r.cs, rt) || r.reg || r.hex.toUpperCase();
-  $('dAirline').textContent = [airlineName(r.cs, rt), r.cs && flightNo(r.cs, rt) !== r.cs ? `callsign ${r.cs}` : ''].filter(Boolean).join(', ') || 'No callsign broadcast';
+  $('dFlight').textContent = flightNo(r.cs, rt, r) || r.reg || r.hex.toUpperCase();
+  $('dAirline').textContent = [airlineName(r.cs, rt, r), r.cs && flightNo(r.cs, rt, r) !== r.cs ? `callsign ${r.cs}` : ''].filter(Boolean).join(', ') || 'No callsign broadcast';
+  const note = rt && rt.seen ? (rt.dest !== '?' ? `Landing at ${rt.dest}, seen on its approach.` : `Took off from ${rt.orig}.`) +
+    (rt.doubt ? ` The route database lists this callsign as ${rt.doubt}, which doesn't match what the plane is doing.` : '') : '';
+  $('dNote').hidden = !note; $('dNote').textContent = note;
   $('dOrig').textContent = rt ? (rt.orig || '?') : '—';
   $('dDest').textContent = rt ? (rt.dest || '?') : '—';
   $('dOrigN').textContent = rt ? (rt.origName || '') : (pending ? 'Finding route…' : 'Route unknown');
@@ -1671,6 +1748,105 @@ fAir.addEventListener('change', e => {
 $('fAllAir').onclick = () => { F.airlines = []; filtersChanged(); renderAirlines(true); };
 $('fReset').onclick = () => { Object.assign(F, { arr: true, dep: true, thru: true, apt: 'ALL', area: true, airlines: [] }); $('fAirSearch').value = ''; filtersChanged(); renderAirlines(true); };
 syncFilterUI();
+
+/* ---------- find a flight ----------
+   Matches what's in the sky now, what this page holds (the last 30 minutes, or more if playback
+   loaded it), and on request every 10-minute segment of the last 24 hours. A regional flight matches
+   its own code, its partners' codes and its number alone: DL5831, RPA5831 and 5831 all find RPA5831. */
+const NORM = v => String(v || '').toUpperCase().replace(/[\s-]/g, '');
+function flightKeys(cs, reg, hex) {
+  const keys = new Set(), m = /^([A-Z]{3})0*(\d{1,4})([A-Z]{0,2})$/.exec(cs || '');
+  if (cs) keys.add(cs);
+  if (reg) keys.add(NORM(reg));
+  if (hex) keys.add(String(hex).toUpperCase());
+  if (m) {
+    const [, op, num, suf] = m;
+    keys.add(num + suf);
+    for (const k of new Set([op, ONE_PARTNER[op], ...(PARTNERS[op] || [])])) {
+      if (!k) continue;
+      keys.add(k + num + suf);
+      const ia = (AIRLINES[k] || [])[0]; if (ia) keys.add(ia + num + suf);
+    }
+    if (op === 'RPA') keys.add('RW' + num + suf); // Republic's old code, still in some listings
+  }
+  return keys;
+}
+const keyHit = (q, keys) => { if (keys.has(q)) return true; if (q.length < 3) return false; for (const k of keys) if (k.startsWith(q)) return true; return false; };
+const fFind = $('fFind'), fResults = $('fResults');
+let findHits = [], findPast = null, findToken = 0;
+const timeOf = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const spanOf = (a, b) => { const d = new Date(a), today = d.toDateString() === new Date().toDateString();
+  return (today ? '' : d.toLocaleDateString([], { weekday: 'short' }) + ' ') + timeOf(a) + '–' + timeOf(b); };
+function runFind() {
+  const q = NORM(fFind.value); findHits = [];
+  if (!q) { fResults.innerHTML = ''; findPast = null; return; }
+  const seenHex = new Set();
+  for (const c of crafts.values()) {
+    if (c.dying || !c.rec) continue;
+    const r = c.rec;
+    if (!keyHit(q, flightKeys(r.cs, r.reg, r.hex))) continue;
+    seenHex.add(r.hex);
+    const rt = routeOf(c);
+    findHits.push({ live: true, hex: r.hex, cs: r.cs, reg: r.reg, type: r.type, title: flightNo(r.cs, rt, r) || r.reg || r.hex.toUpperCase(),
+      sub: rt ? `${rt.orig || '?'} → ${rt.dest || '?'}` : '', when: replay.on ? 'In playback' : 'In the air now' });
+  }
+  const past = new Map(); // hex|cs -> hit, from what this page holds
+  for (const [hex, a] of pbHist) {
+    if (!a.length || seenHex.has(hex)) continue;
+    const last = a[a.length - 1];
+    if (!keyHit(q, flightKeys(last.cs, last.reg, hex))) continue;
+    past.set(hex + '|' + last.cs, { hex, cs: last.cs, reg: last.reg, type: last.type, t0: a[0].t, t1: last.t });
+  }
+  if (findPast && findPast.q === q) for (const [k, h] of findPast.hits) if (!seenHex.has(h.hex)) {
+    const o = past.get(k); past.set(k, o ? { ...o, t0: Math.min(o.t0, h.t0), t1: Math.max(o.t1, h.t1) } : h);
+  }
+  for (const h of [...past.values()].sort((a, b) => b.t1 - a.t1))
+    findHits.push({ ...h, title: flightNo(h.cs, null, h) || h.reg || h.hex.toUpperCase(), when: spanOf(h.t0, h.t1) });
+  const canDeep = cfg.source === 'cloud' && !!histFrom && !(findPast && findPast.q === q && findPast.done);
+  const busy = findPast && findPast.q === q && !findPast.done;
+  fResults.innerHTML = findHits.map((h, i) => `<button type="button" data-i="${i}"><b>${esc(h.title)}</b><span class="d">${esc(h.when)}</span>` +
+    `<span class="w">${esc([h.sub, h.type, h.reg, h.title !== h.cs && h.cs ? 'callsign ' + h.cs : ''].filter(Boolean).join(' · '))}</span></button>`).join('') +
+    (findHits.length ? '' : `<p>No match ${busy ? 'yet' : 'in the sky or the last 30 minutes'}.</p>`) +
+    (busy ? `<p>Searching the last 24 hours… ${findPast.n} of ${findPast.of}</p>` :
+      canDeep ? `<button type="button" data-deep="1"><b>Search the last 24 hours</b><span class="w">Looks through every 10-minute segment saved since then</span></button>` : '');
+}
+async function deepFind() {
+  const q = NORM(fFind.value); if (!q) return;
+  const token = ++findToken, end = Math.floor((Date.now() - PB_KEEP_MS) / SEG_MS) * SEG_MS;
+  const start = Math.max(Math.floor(histFrom / SEG_MS) * SEG_MS, end - 24 * 3600e3);
+  findPast = { q, hits: new Map(), n: 0, of: Math.max(0, Math.round((end - start) / SEG_MS)), done: false };
+  runFind();
+  for (let t0 = end - SEG_MS; t0 >= start; t0 -= SEG_MS) { // newest first
+    if (token !== findToken) return;
+    try {
+      const r = await fetch(`${DATA_URL}/seg/${t0 / 1000}.json`);
+      if (r.ok) {
+        const h = await r.json(), meta = h.meta || {};
+        for (const [hex, pts] of Object.entries(h.ac || {})) {
+          const m = meta[hex] || []; if (!pts.length || !keyHit(q, flightKeys(m[0], m[2], hex))) continue;
+          const k = hex + '|' + (m[0] || ''), a = h.t + pts[0][0] * 1000, b = h.t + pts[pts.length - 1][0] * 1000, o = findPast.hits.get(k);
+          findPast.hits.set(k, o ? { ...o, t0: Math.min(o.t0, a), t1: Math.max(o.t1, b) } : { hex, cs: m[0] || '', type: m[1] || '', reg: m[2] || '', t0: a, t1: b });
+        }
+      }
+    } catch (e) { /* a missing segment is a gap */ }
+    findPast.n++;
+    if (findPast.n % 6 === 0) runFind();
+  }
+  findPast.done = true; runFind();
+}
+fFind.addEventListener('input', () => { findToken++; findPast = null; runFind(); });
+fFind.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const b = fResults.querySelector('button'); if (b) b.click(); } });
+fResults.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.deep) { deepFind(); return; }
+  const h = findHits[+b.dataset.i]; if (!h) return;
+  if (h.live) { const c = crafts.get(h.hex); if (c) { select(c); following = true; renderDetail(); } }
+  else { pendingSel = h.hex; enterReplay(Math.max(h.t0, Math.min(h.t1 - 30e3, h.t0 + 60e3)), true); }
+  openFilters(false); // the flight's card sits where this panel is
+});
+addEventListener('keydown', e => {
+  if (e.key === '/' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName)) { e.preventDefault(); openFilters(true); fFind.focus(); }
+});
 
 const settingsEl = $('settings'), bSettings = $('bSettings');
 function openSettings(on) {
@@ -1880,7 +2056,7 @@ function frame(now) {
 
   statusAcc += dt;
   if (statusAcc > 1) { statusAcc = 0; renderStatus(); if (sel) renderDetail(); }
-  airAcc += dt; if (airAcc > 3) { airAcc = 0; renderAirlines(false); }
+  airAcc += dt; if (airAcc > 3) { airAcc = 0; renderAirlines(false); if (!filtersEl.hidden && fFind.value && document.activeElement?.closest?.('#fResults') == null) runFind(); }
   pbAcc += dt; if (pbAcc > 0.25) { pbAcc = 0; pbUI(); }
 }
 
